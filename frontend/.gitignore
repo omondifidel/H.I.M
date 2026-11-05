@@ -1,0 +1,5 @@
+node_modules
+.next
+out
+.env.local
+public/pdf.worker.min.js
