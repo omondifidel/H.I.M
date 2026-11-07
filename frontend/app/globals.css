@@ -83,7 +83,9 @@ h1,h2{margin:0}
 .bars i{width:6px;border-radius:3px;background:var(--track);animation:pulse 1.4s ease-in-out infinite;transform-origin:bottom}
 .bars i.on{background:var(--accent)}
 .formside{display:flex;align-items:flex-start;justify-content:center;padding:8px 24px 40px}
-.formbox{width:100%;max-width:400px;display:flex;flex-direction:column;gap:14px;animation:rise .5s .1s ease both}
+.formbox{width:100%;max-width:400px;display:flex;flex-direction:column;gap:14px}
+.formbox>*{animation:rise .5s ease both}
+.formbox>:nth-child(2){animation-delay:.05s}.formbox>:nth-child(3){animation-delay:.1s}.formbox>:nth-child(4){animation-delay:.15s}.formbox>:nth-child(5){animation-delay:.2s}.formbox>:nth-child(6){animation-delay:.25s}.formbox>:nth-child(7){animation-delay:.3s}.formbox>:nth-child(8){animation-delay:.35s}
 .fh{font-size:30px;font-weight:700;letter-spacing:-.6px}
 .fld{display:flex;align-items:center;gap:12px;height:54px;border-radius:16px;background:var(--surface);border:1px solid var(--line2);padding:0 16px;color:var(--muted);transition:border-color .15s,box-shadow .15s}
 .fld:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--hl)}
@@ -115,6 +117,15 @@ h1,h2{margin:0}
 .chips3 svg{color:var(--good)}
 .only-d{display:none}
 .shake{animation:shake .4s}
+.strip{position:relative;height:130px;border-radius:24px;background:var(--surface);border:1px solid var(--line);overflow:hidden}
+.strip .c1,.strip .c2,.strip .c3{position:absolute;width:64px;height:84px;border-radius:14px;--r:0deg;animation:drift 6s ease-in-out infinite}
+.strip .c1{left:20px;top:20px;background:#FF7A59}
+.strip .c2{left:96px;top:30px;background:#5B8DEF;animation-delay:-2s}
+.strip .c3{left:172px;top:20px;background:#3FBF93;animation-delay:-4s}
+.pbig{position:absolute;right:20px;top:29px;width:72px;height:72px;border-radius:36px;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center}
+.cta:hover:not(:disabled){filter:brightness(1.06)}
+.alt:hover{border-color:var(--accent)}
+.seg button{transition:background .2s,color .2s}
 @keyframes drift{0%,100%{transform:translateY(0) rotate(var(--r))}50%{transform:translateY(-8px) rotate(var(--r))}}
 @keyframes pulse{0%,100%{transform:scaleY(.45)}50%{transform:scaleY(1)}}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}

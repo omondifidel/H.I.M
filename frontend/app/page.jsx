@@ -110,28 +110,40 @@ function AuthForm({ onDone }) {
   return (
     <div className="authx">
       <section className="brand">
-        <div className="logo"><i><Icon size={18} fill d={P.play} /></i>Read-Aloud</div>
-
-        <div className="art" aria-hidden="true">
-          <div className="pc a" />
-          <div className="pc b" />
-          <div className="pc f">
-            <div className="ln t" />
-            <div className="ln" style={{ width: "90%" }} />
-            <div className="ln" style={{ width: "60%", background: "var(--accent)" }} />
-            <div className="ln" style={{ width: "80%" }} />
-            <div className="mini">
-              {MINI.map((h, i) => <i key={i} style={{ height: h, animationDelay: `${-i * 0.15}s`, opacity: i < 4 ? 1 : 0.45 }} />)}
-            </div>
-            <div className="pb"><Icon size={22} fill d={P.play} /></div>
-          </div>
+        <div className="row between">
+          <div className="logo"><i><Icon size={18} fill d={P.play} /></i>Read-Aloud</div>
+          {reg && <span className="badge only-m">Invite only</span>}
         </div>
 
+        {reg ? (
+          <div className="strip only-m" aria-hidden="true">
+            <i className="c1" /><i className="c2" /><i className="c3" />
+            <span className="pbig"><Icon size={30} fill d={P.play} /></span>
+          </div>
+        ) : (
+          <div className="art" aria-hidden="true">
+            <div className="pc a" />
+            <div className="pc b" />
+            <div className="pc f">
+              <div className="ln t" />
+              <div className="ln" style={{ width: "90%" }} />
+              <div className="ln" style={{ width: "60%", background: "var(--accent)" }} />
+              <div className="ln" style={{ width: "80%" }} />
+              <div className="mini">
+                {MINI.map((h, i) => <i key={i} style={{ height: h, animationDelay: `${-i * 0.15}s`, opacity: i < 4 ? 1 : 0.45 }} />)}
+              </div>
+              <div className="pb"><Icon size={22} fill d={P.play} /></div>
+            </div>
+          </div>
+        )}
+
         <div>
-          <h1 className="ah">Your PDFs, read to you.</h1>
-          <p className="as" style={{ marginTop: 12 }}>
+          <h1 className="ah only-m">{reg ? "Join with your invite code" : "Your PDFs, read to you."}</h1>
+          <h1 className="ah only-d">Listen to everything you read.</h1>
+          <p className="as only-m" style={{ marginTop: 12 }}>
             {reg ? "Create your account and start listening in under a minute." : "Sign in to pick up right where you stopped listening."}
           </p>
+          <p className="as only-d" style={{ marginTop: 16 }}>Upload a PDF, press play, and let it read to you while you write notes beside it.</p>
         </div>
 
         <div className="feats">
@@ -148,6 +160,7 @@ function AuthForm({ onDone }) {
       <section className="formside">
         <form className={"formbox" + (shake ? " shake" : "")} onSubmit={submit} noValidate>
           <h2 className="fh only-d">{reg ? "Create your account" : "Welcome back"}</h2>
+          <p className="muted only-d" style={{ margin: "-6px 0 6px" }}>{reg ? "Use the invite code you were given." : "Sign in to your library."}</p>
           <div className="seg only-d" role="group" aria-label="Sign in or create account">
             <button type="button" className={!reg ? "on" : ""} aria-pressed={!reg} onClick={() => switchMode("login")}>Sign in</button>
             <button type="button" className={reg ? "on" : ""} aria-pressed={reg} onClick={() => switchMode("register")}>Create account</button>
