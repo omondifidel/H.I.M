@@ -3,7 +3,10 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install --ignore-scripts
 COPY frontend/ ./
-RUN node scripts/copy-worker.js && npm run build
+RUN rm -f next.config.mjs next.config.ts next.config.js && printf '%s\n' 'module.exports={output:"export",trailingSlash:true,images:{unoptimized:true},webpack:function(c){c.resolve.alias.canvas=false;c.resolve.alias.encoding=false;return c;}};' > next.config.js
+RUN node scripts/copy-worker.js
+RUN npm run build
+RUN ls -la /app/frontend && test -d out
 
 FROM python:3.12-slim
 WORKDIR /app
