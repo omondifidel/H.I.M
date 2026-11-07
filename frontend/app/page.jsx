@@ -19,6 +19,13 @@ const P = {
   play: <path d="M7 4l13 8-13 8z" />,
   plus: <path d="M12 5v14M5 12h14" />,
   trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />,
+  mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></>,
+  lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></>,
+  key: <><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M16 7l3 3" /></>,
+  eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>,
+  eyeOff: <><path d="M3 3l18 18M10.6 6.1A9.6 9.6 0 0112 5c6 0 10 7 10 7a17 17 0 01-3.2 3.9M6.6 6.6C3.7 8.4 2 12 2 12s4 7 10 7a9.7 9.7 0 004.1-.9" /></>,
+  arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
+  mic: <path d="M12 3a3 3 0 013 3v5a3 3 0 01-6 0V6a3 3 0 013-3zM5 11a7 7 0 0014 0M12 18v3" />,
 };
 
 function hash(s) {
@@ -39,41 +46,168 @@ const coverClass = (id) => "cv c" + (hash(id) % 4);
 const cleanTitle = (t) => t.replace(/\.pdf$/i, "");
 const fmtSize = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
 
+const WAVE = [30, 56, 78, 44, 64, 90, 52, 36, 70, 48, 84, 40, 60, 28, 74, 46, 58, 34];
+const MINI = [12, 24, 32, 18, 28, 14, 22, 10];
+
+function strength(pw) {
+  if (!pw) return { score: 0, label: "" };
+  if (pw.length < 8) return { score: 1, label: "Too short" };
+  let s = 1;
+  if (pw.length >= 12) s++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
+  if (/\d/.test(pw) || /[^A-Za-z0-9]/.test(pw)) s++;
+  s = Math.min(4, s);
+  return { score: s, label: ["", "Weak", "Okay", "Good", "Strong"][s] };
+}
+
 function AuthForm({ onDone }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [invite, setInvite] = useState("");
+  const [show, setShow] = useState(false);
+  const [errs, setErrs] = useState({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [shake, setShake] = useState(false);
+  const reg = mode === "register";
+  const st = strength(password);
+
+  function wiggle() {
+    setShake(true);
+    setTimeout(() => setShake(false), 450);
+  }
+  function switchMode(m) {
+    setMode(m);
+    setErrs({});
+    setError("");
+  }
 
   async function submit(e) {
     e.preventDefault();
-    setBusy(true);
     setError("");
+    const v = {};
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) v.email = "Enter a valid email address.";
+    if (!password) v.password = "Enter your password.";
+    else if (reg && password.length < 8) v.password = "Use at least 8 characters.";
+    if (reg && !invite.trim()) v.invite = "Enter your invite code.";
+    setErrs(v);
+    if (Object.keys(v).length) { wiggle(); return; }
+    setBusy(true);
     try {
       const res = await api(`/api/auth/${mode}`, { method: "POST", body: { email, password, invite_code: invite } });
       setToken(res.token);
       onDone();
     } catch (err) {
-      setError(err.message);
+      if (err.status === 403) setErrs({ invite: err.message });
+      else if (err.status === 409) setErrs({ email: err.message });
+      else setError(err.message);
+      wiggle();
     }
     setBusy(false);
   }
 
   return (
-    <form className="auth" onSubmit={submit}>
-      <h1 className="title" style={{ fontSize: 30 }}>Read-Aloud PDF</h1>
-      <p className="muted" style={{ margin: 0 }}>{mode === "login" ? "Sign in to your library." : "Create an account with your invite code."}</p>
-      <input className="input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required aria-label="Email" />
-      <input className="input" type="password" placeholder="Password (8+ characters)" value={password} onChange={(e) => setPassword(e.target.value)} required aria-label="Password" />
-      {mode === "register" && <input className="input" placeholder="Invite code" value={invite} onChange={(e) => setInvite(e.target.value)} aria-label="Invite code" />}
-      {error && <div className="err" role="alert">{error}</div>}
-      <button className="btn" disabled={busy}>{mode === "login" ? "Sign in" : "Create account"}</button>
-      <button type="button" className="btn ghost" onClick={() => setMode(mode === "login" ? "register" : "login")}>
-        {mode === "login" ? "I have an invite code" : "Back to sign in"}
-      </button>
-    </form>
+    <div className="authx">
+      <section className="brand">
+        <div className="logo"><i><Icon size={18} fill d={P.play} /></i>Read-Aloud</div>
+
+        <div className="art" aria-hidden="true">
+          <div className="pc a" />
+          <div className="pc b" />
+          <div className="pc f">
+            <div className="ln t" />
+            <div className="ln" style={{ width: "90%" }} />
+            <div className="ln" style={{ width: "60%", background: "var(--accent)" }} />
+            <div className="ln" style={{ width: "80%" }} />
+            <div className="mini">
+              {MINI.map((h, i) => <i key={i} style={{ height: h, animationDelay: `${-i * 0.15}s`, opacity: i < 4 ? 1 : 0.45 }} />)}
+            </div>
+            <div className="pb"><Icon size={22} fill d={P.play} /></div>
+          </div>
+        </div>
+
+        <div>
+          <h1 className="ah">Your PDFs, read to you.</h1>
+          <p className="as" style={{ marginTop: 12 }}>
+            {reg ? "Create your account and start listening in under a minute." : "Sign in to pick up right where you stopped listening."}
+          </p>
+        </div>
+
+        <div className="feats">
+          <div className="ft"><span className="ic"><Icon size={22} d={P.mic} /></span><div><b>Natural voices, your speed</b><div className="muted sm">Change voice and pace any time.</div></div></div>
+          <div className="ft"><span className="ic"><Icon size={22} d={P.pencil} /></span><div><b>Notes that work offline</b><div className="muted sm">Pinned to the paragraph you are on.</div></div></div>
+          <div className="ft"><span className="ic"><Icon size={22} d={P.download} /></span><div><b>Pick up where you stopped</b><div className="muted sm">On your phone, tablet or computer.</div></div></div>
+        </div>
+
+        <div className="bars" aria-hidden="true">
+          {WAVE.map((h, i) => <i key={i} className={i < 7 ? "on" : ""} style={{ height: h, animationDelay: `${-(i % 9) * 0.17}s` }} />)}
+        </div>
+      </section>
+
+      <section className="formside">
+        <form className={"formbox" + (shake ? " shake" : "")} onSubmit={submit} noValidate>
+          <h2 className="fh only-d">{reg ? "Create your account" : "Welcome back"}</h2>
+          <div className="seg only-d" role="group" aria-label="Sign in or create account">
+            <button type="button" className={!reg ? "on" : ""} aria-pressed={!reg} onClick={() => switchMode("login")}>Sign in</button>
+            <button type="button" className={reg ? "on" : ""} aria-pressed={reg} onClick={() => switchMode("register")}>Create account</button>
+          </div>
+
+          <div>
+            <label className={"fld" + (errs.email ? " bad" : "")}>
+              <Icon size={20} d={P.mail} />
+              <input type="email" autoComplete="email" placeholder="Email" aria-label="Email" aria-invalid={!!errs.email} value={email} onChange={(e) => setEmail(e.target.value)} />
+            </label>
+            {errs.email && <div className="ferr" role="alert">{errs.email}</div>}
+          </div>
+
+          <div>
+            <label className={"fld" + (errs.password ? " bad" : "")}>
+              <Icon size={20} d={P.lock} />
+              <input type={show ? "text" : "password"} autoComplete={reg ? "new-password" : "current-password"} placeholder={reg ? "Password (8+ characters)" : "Password"} aria-label="Password" aria-invalid={!!errs.password} value={password} onChange={(e) => setPassword(e.target.value)} />
+              <button type="button" className="eye" aria-label={show ? "Hide password" : "Show password"} aria-pressed={show} onClick={() => setShow(!show)}>
+                <Icon size={20} d={show ? P.eyeOff : P.eye} />
+              </button>
+            </label>
+            {errs.password && <div className="ferr" role="alert">{errs.password}</div>}
+            <div className={"col" + (reg && password ? " open" : "")}>
+              <div>
+                <div className="meter" aria-live="polite">
+                  {[1, 2, 3, 4].map((n) => <i key={n} className={n <= st.score ? "on s" + st.score : ""} />)}
+                  <span className={"s" + st.score}>{st.label}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={"col" + (reg ? " open" : "")}>
+            <div>
+              <label className={"fld" + (errs.invite ? " bad" : "")}>
+                <Icon size={20} d={P.key} />
+                <input type="text" autoComplete="off" placeholder="Invite code" aria-label="Invite code" aria-invalid={!!errs.invite} tabIndex={reg ? 0 : -1} value={invite} onChange={(e) => setInvite(e.target.value)} />
+              </label>
+              {errs.invite && <div className="ferr" role="alert">{errs.invite}</div>}
+            </div>
+          </div>
+
+          <button className="cta" disabled={busy}>
+            {busy ? <><span className="spin" />{reg ? "Creating account..." : "Signing in..."}</> : <>{reg ? "Create account" : "Sign in"}<Icon size={20} d={P.arrow} /></>}
+          </button>
+          {error && <div className="err" role="alert" style={{ margin: 0 }}>{error}</div>}
+
+          <button type="button" className="alt only-m" onClick={() => switchMode(reg ? "login" : "register")}>
+            {reg ? "Back to sign in" : "I have an invite code"}
+          </button>
+          <p className="muted sm only-d" style={{ margin: "6px 0 0", textAlign: "center" }}>Invite only. Ask the person who shared this app for a code.</p>
+
+          <div className="chips3 only-m">
+            <span><Icon size={16} d={P.download} />Works offline</span>
+            <span><Icon size={16} d={P.pencil} />Notes that sync</span>
+            <span><Icon size={16} d={P.mic} />Choose your voice</span>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
