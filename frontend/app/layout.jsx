@@ -7,11 +7,17 @@ export const metadata = {
   manifest: "/manifest.json",
   icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
 };
-export const viewport = { width: "device-width", initialScale: 1, themeColor: "#0E7C86" };
+export const viewport = { width: "device-width", initialScale: 1, themeColor: "#0E1018" };
+
+// Sets the saved theme before the page paints, so there is no flash of the wrong colors.
+const themeScript = `try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
         <RegisterSW />
         {children}

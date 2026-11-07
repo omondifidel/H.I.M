@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "../../lib/api";
@@ -29,25 +29,49 @@ function splitChunks(text, max = 220) {
   return out.length ? out : [text];
 }
 
-const Icon = ({ d, fill }) => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+const Icon = ({ d, size = 24, fill }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {d}
   </svg>
 );
+const P = {
+  down: <path d="M6 9l6 6 6-6" />,
+  up: <path d="M18 15l-6-6-6 6" />,
+  prev: <path d="M6 5v14M20 5L9 12l11 7z" />,
+  next: <path d="M18 5v14M4 5l11 7-11 7z" />,
+  pencil: <path d="M4 20l4-1 11-11-3-3L5 16z" />,
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  speed: <path d="M12 13l4-4M4 18a9 9 0 1116 0" />,
+  mic: <path d="M12 3a3 3 0 013 3v5a3 3 0 01-6 0V6a3 3 0 013-3zM5 11a7 7 0 0014 0M12 18v3" />,
+  moon: <path d="M20 14A8 8 0 019 3a8 8 0 1011 11z" />,
+  check: <path d="M5 12l5 5 9-10" />,
+  pin: <path d="M12 17v5M9 3h6l-1 7 3 3H7l3-3z" />,
+  play: <path d="M7 4l13 8-13 8z" />,
+  pause: <><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></>,
+};
+const BARS = [5, 9, 14, 8, 16, 11, 6, 13, 18, 10, 7, 15, 12, 20, 9, 6, 14, 17, 8, 12, 19, 10, 5, 13, 16, 7, 11, 15, 9, 6, 12, 18, 8, 14, 10, 7, 13, 16, 9, 5, 11, 14, 8];
+const PAL = ["#FFB547", "#5B8DEF", "#4FD1A5", "#FF7A59", "#C08CF5"];
 
 function Reader() {
-  const id = useSearchParams().get("id");
+  const sp = useSearchParams();
+  const id = sp.get("id");
+  const pageParam = sp.get("page");
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [title, setTitle] = useState("");
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
   const [idx, setIdx] = useState(0);
+  const [chunk, setChunk] = useState(0);
+  const [pageInput, setPageInput] = useState("1");
   const [paras, setParas] = useState([]);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
   const [voices, setVoices] = useState([]);
   const [voiceURI, setVoiceURI] = useState("");
+  const [hl, setHl] = useState(true);
+  const [panel, setPanel] = useState(null); // null | "notes" | "voice"
+  const [sleepMin, setSleepMin] = useState(0);
 
   const pdfRef = useRef(null);
   const cache = useRef(new Map());
@@ -58,10 +82,10 @@ function Reader() {
   const numRef = useRef(0);
   const playingRef = useRef(false);
   const saveTimer = useRef(null);
+  const sleepTimer = useRef(null);
   const latest = useRef({});
 
   // ---- notes state ----
-  const [sheet, setSheet] = useState(false);
   const [notes, setNotes] = useState([]);
   const [draft, setDraft] = useState({ id: null, body: "", paragraph: null, page: 1 });
   const [syncState, setSyncState] = useState("saved");
@@ -83,15 +107,21 @@ function Reader() {
     try { v = await idbGet("paras", key); } catch {}
     if (!v) {
       v = await extractParagraphs(pdfRef.current, p);
-      // Clean dot strings and layout artifacts (e.g. ".....")
-      v = (v || [])
-        .map((text) => text.trim())
-        .filter((text) => text.length > 0 && !/^[\.\-_]{2,}$/.test(text))
-        .map((text) => text.replace(/\s+/g, " "));
       try { await idbPut("paras", key, v); } catch {}
     }
     cache.current.set(key, v);
     return v;
+  }
+
+  /** Looks forward (dir 1) or backward (dir -1) for the nearest page that has readable text. */
+  async function findTextPage(from, dir, limit = 40) {
+    for (let k = 0; k < limit; k++) {
+      const q = from + dir * k;
+      if (q < 1 || q > numRef.current) return null;
+      const ps = await getParas(q);
+      if (ps.length) return { page: q, paras: ps };
+    }
+    return null;
   }
 
   function show(p, i, ps) {
@@ -102,25 +132,33 @@ function Reader() {
   }
 
   // ---- speech ----
-  async function play(p, i, chunk = 0) {
+  async function play(p, i, chunkNo = 0) {
     const synth = window.speechSynthesis;
     const myRun = ++run.current;
     synth.cancel();
     setPlay(true);
+    setError("");
     let ps = await getParas(p);
     if (myRun !== run.current) return;
+    let empties = 0;
     while (i >= ps.length) {
       if (p >= numRef.current) { setPlay(false); return; }
-      p += 1; i = 0; chunk = 0;
+      if (++empties > 40) {
+        setPlay(false);
+        setError("No readable text in the next 40 pages. They may be scanned images (OCR is needed). Use the page box to jump ahead.");
+        return;
+      }
+      p += 1; i = 0; chunkNo = 0;
       ps = await getParas(p);
       if (myRun !== run.current) return;
     }
     show(p, i, ps);
-    pos.current.chunk = chunk;
+    pos.current.chunk = chunkNo;
+    setChunk(chunkNo);
     if (p < numRef.current) getParas(p + 1).catch(() => {}); // prefetch next page
 
     const chunks = splitChunks(ps[i]);
-    const text = chunks[chunk];
+    const text = chunks[chunkNo];
     if (text == null) return play(p, i + 1, 0);
     const u = new SpeechSynthesisUtterance(text);
     u.rate = rateRef.current;
@@ -128,7 +166,7 @@ function Reader() {
     if (v) { u.voice = v; u.lang = v.lang; }
     u.onend = () => {
       if (myRun !== run.current) return;
-      if (chunk + 1 < chunks.length) play(p, i, chunk + 1);
+      if (chunkNo + 1 < chunks.length) play(p, i, chunkNo + 1);
       else play(p, i + 1, 0);
     };
     u.onerror = (e) => {
@@ -167,13 +205,23 @@ function Reader() {
     if (playingRef.current) return play(p, i, 0);
     show(p, i, await getParas(p));
     pos.current.chunk = 0;
+    setChunk(0);
   }
   async function move(delta) {
     const t = await step(pos.current.page, pos.current.idx, delta);
     return jump(t.page, t.idx);
   }
-  async function goPage(p) {
+  async function goPage(p, dir = 0) {
     p = Math.max(1, Math.min(numRef.current, Number(p) || 1));
+    setError("");
+    if (dir !== 0) {
+      const found = await findTextPage(p, dir, 60);
+      if (!found) {
+        setError("No readable text found in that direction. Those pages may be scanned images.");
+        return;
+      }
+      p = found.page;
+    }
     return jump(p, 0);
   }
   function toggle() {
@@ -191,6 +239,25 @@ function Reader() {
     setVoiceURI(uri);
     localStorage.setItem("tts:voice", uri);
     if (playingRef.current) play(pos.current.page, pos.current.idx, pos.current.chunk);
+  }
+  function previewVoice(v) {
+    pause();
+    const u = new SpeechSynthesisUtterance("This is how I will read your document.");
+    u.voice = v;
+    u.lang = v.lang;
+    u.rate = rateRef.current;
+    setTimeout(() => window.speechSynthesis.speak(u), 60);
+  }
+  function changeHl(v) {
+    setHl(v);
+    localStorage.setItem("ui:hl", v ? "1" : "0");
+  }
+  function setSleep(min) {
+    clearTimeout(sleepTimer.current);
+    setSleepMin(min);
+    if (min > 0) {
+      sleepTimer.current = setTimeout(() => { pause(); setSleepMin(0); }, min * 60000);
+    }
   }
   latest.current = { toggle, move };
 
@@ -226,11 +293,14 @@ function Reader() {
     clearTimeout(noteTimer.current);
     noteTimer.current = setTimeout(persistDraft, 600);
   }
+  function blankDraft() {
+    draftRef.current = { id: null, body: "", paragraph: null, page: pos.current.page };
+    setDraft(draftRef.current);
+  }
   async function startNewNote() {
     clearTimeout(noteTimer.current);
     await persistDraft();
-    draftRef.current = { id: null, body: "", paragraph: null, page: pos.current.page };
-    setDraft(draftRef.current);
+    blankDraft();
   }
   async function openNote(n) {
     clearTimeout(noteTimer.current);
@@ -242,23 +312,27 @@ function Reader() {
     const d = draftRef.current;
     clearTimeout(noteTimer.current);
     if (d.id) await removeNote(d.id);
-    draftRef.current = { id: null, body: "", paragraph: null, page: pos.current.page };
-    setDraft(draftRef.current);
+    blankDraft();
     await refreshNotes();
     clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(runSync, 800);
   }
-  function openSheet() {
-    if (!draftRef.current.id && !draftRef.current.body) {
-      draftRef.current = { id: null, body: "", paragraph: null, page: pos.current.page };
-      setDraft(draftRef.current);
-    }
-    setSheet(true);
+  function addBullet() {
+    const b = draftRef.current.body;
+    editDraft({ body: b + (b && !b.endsWith("\n") ? "\n" : "") + "• " });
   }
-  async function closeSheet() {
+  function openNotes() {
+    if (!draftRef.current.id && !draftRef.current.body) blankDraft();
+    setPanel("notes");
+  }
+  async function closeNotes() {
     clearTimeout(noteTimer.current);
     await persistDraft();
-    setSheet(false);
+    setPanel(null);
+  }
+  function closePanel() {
+    if (panel === "notes") closeNotes();
+    else setPanel(null);
   }
 
   useEffect(() => {
@@ -285,6 +359,7 @@ function Reader() {
     const r = parseFloat(localStorage.getItem("tts:rate") || "1") || 1;
     rateRef.current = r;
     setRate(r);
+    setHl(localStorage.getItem("ui:hl") !== "0");
     voiceRef.current = localStorage.getItem("tts:voice") || "";
     setVoiceURI(voiceRef.current);
     const synth = window.speechSynthesis;
@@ -312,10 +387,6 @@ function Reader() {
     (async () => {
       try {
         const pdfjs = await loadPdfjs();
-        // Fallback PDF.js worker path for static builds to prevent chunk failure
-        if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
-          pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version || '3.11.174'}/build/pdf.worker.min.js`;
-        }
         let blob = null;
         try { blob = await idbGet("pdfs", id); } catch {}
         if (!blob) {
@@ -329,6 +400,8 @@ function Reader() {
         pdfRef.current = pdf;
         numRef.current = pdf.numPages;
         setNumPages(pdf.numPages);
+        localStorage.setItem("last", id);
+        localStorage.setItem("pages:" + id, String(pdf.numPages));
 
         let meta = null;
         try {
@@ -337,16 +410,19 @@ function Reader() {
           meta = JSON.parse(localStorage.getItem("docs") || "[]").find((d) => d.id === id);
         }
         const local = JSON.parse(localStorage.getItem("progress:" + id) || "null");
-        const start = local || (meta ? { page: meta.last_page, idx: meta.last_paragraph } : { page: 1, idx: 0 });
-        setTitle(meta ? meta.title : "PDF");
+        const forced = pageParam ? { page: Number(pageParam) || 1, idx: 0 } : null;
+        const start = forced || local || (meta ? { page: meta.last_page, idx: meta.last_paragraph } : { page: 1, idx: 0 });
+        setTitle(meta ? meta.title.replace(/\.pdf$/i, "") : "PDF");
 
-        const p = Math.min(Math.max(1, start.page), pdf.numPages);
-        const ps = await getParas(p);
-        show(p, Math.min(start.idx, Math.max(0, ps.length - 1)), ps);
-
-        let any = ps.length > 0;
-        for (let q = 1; !any && q <= Math.min(3, pdf.numPages); q++) any = (await getParas(q)).length > 0;
-        if (!any) setError("No readable text found. This may be a scanned PDF (it needs OCR, coming later).");
+        let p = Math.min(Math.max(1, start.page), pdf.numPages);
+        let ps = await getParas(p);
+        let startIdx = Math.min(start.idx, Math.max(0, ps.length - 1));
+        if (ps.length === 0) {
+          const found = await findTextPage(p, 1, 60);
+          if (found) { p = found.page; ps = found.paras; startIdx = 0; }
+        }
+        show(p, startIdx, ps);
+        if (ps.length === 0) setError("No readable text found in the first pages. This may be a scanned PDF (it needs OCR, coming later).");
         setStatus("ready");
       } catch (e) {
         if (!dead) { setStatus("error"); setError(e.message || "Could not open this PDF."); }
@@ -355,6 +431,7 @@ function Reader() {
     return () => {
       dead = true;
       run.current++;
+      clearTimeout(sleepTimer.current);
       if (window.speechSynthesis) window.speechSynthesis.cancel();
     };
   }, [id]);
@@ -369,13 +446,15 @@ function Reader() {
     }, 1500);
   }, [page, idx, status]);
 
+  useEffect(() => { setPageInput(String(page)); }, [page]);
+
   // ---- keep the current paragraph in view ----
   useEffect(() => {
-    const el = document.getElementById("p" + idx);
+    const el = document.querySelector(".rd.on .spk") || document.getElementById("p" + idx);
     if (!el) return;
-    const target = window.innerHeight * (sheet ? 0.2 : 0.4);
+    const target = window.innerHeight * (panel === "notes" ? 0.2 : 0.3);
     window.scrollBy({ top: el.getBoundingClientRect().top - target, behavior: "smooth" });
-  }, [idx, page, paras, sheet]);
+  }, [idx, chunk, page, paras, panel, hl]);
 
   // ---- lock-screen / headset controls ----
   useEffect(() => {
@@ -388,123 +467,179 @@ function Reader() {
     set("previoustrack", () => latest.current.move(-1));
   }, [title]);
 
+  // ---- derived values ----
+  const voiceList = useMemo(() => {
+    const lang = (typeof navigator !== "undefined" ? navigator.language : "en").slice(0, 2).toLowerCase();
+    return [...voices].sort((a, b) => Number(b.lang.toLowerCase().startsWith(lang)) - Number(a.lang.toLowerCase().startsWith(lang)));
+  }, [voices]);
+  const voiceName = (v) => v.name.replace(/^Microsoft\s+/, "").replace(/\s+-\s+.*$/, "").replace(/\s*\(.*\)\s*$/, "");
+  const currentVoice = voices.find((v) => v.voiceURI === voiceURI);
   const pageNotes = notes.filter((n) => n.page === page);
   const syncLabel = { saved: "Saved on device", syncing: "Syncing...", synced: "Saved and synced", offline: "Offline: saved on device" }[syncState];
   const pct = paras.length ? Math.round(((idx + 1) / paras.length) * 100) : 0;
+  const pinnedText = draft.paragraph != null && draft.page === page ? paras[draft.paragraph] : null;
 
   return (
     <>
       <div className="top">
-        <Link href="/" className="icon" aria-label="Back to library">
-          <Icon d={<path d="M15 5l-7 7 7 7" />} />
-        </Link>
+        <Link href="/" className="ib" aria-label="Back to library"><Icon d={P.down} /></Link>
         <div className="t">
           <b>{title || "Loading..."}</b>
-          <span className="muted">Page {page} of {numPages || "..."}</span>
+          <span className="muted sm">Page {page} of {numPages || "..."}</span>
         </div>
-        <button className="icon" aria-label="Previous page" onClick={() => goPage(page - 1)}>
-          <Icon d={<path d="M18 15l-6-6-6 6" />} />
-        </button>
-        <button className="icon" aria-label="Next page" onClick={() => goPage(page + 1)}>
-          <Icon d={<path d="M6 9l6 6 6-6" />} />
-        </button>
+        <button className="ib" style={{ width: 36 }} aria-label="Previous page with text" onClick={() => goPage(page - 1, -1)}><Icon size={20} d={P.up} /></button>
+        <input
+          className="pg" type="number" min="1" max={numPages || 1} value={pageInput} aria-label="Go to page"
+          onChange={(e) => setPageInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") goPage(pageInput); }}
+        />
+        <button className="ib" style={{ width: 36 }} aria-label="Next page with text" onClick={() => goPage(page + 1, 1)}><Icon size={20} d={P.down} /></button>
       </div>
 
-      <div className={"text" + (sheet ? " pad" : "")}>
+      <div className={"rtext" + (panel === "notes" ? " pad" : "")}>
         {status === "loading" && <p className="muted">Opening your PDF...</p>}
         {error && <p className="err" role="alert">{error}</p>}
-        {paras.length === 0 && status === "ready" && !error && <p className="muted">This page has no readable text. Use the page arrows to move on.</p>}
+        {paras.length === 0 && status === "ready" && !error && (
+          <p className="muted">This page has no readable text (a cover, a picture or a scanned page). Use the page arrows to jump to the next page with text.</p>
+        )}
         {paras.map((t, i) => (
-          <p key={i} id={"p" + i} className={i === idx ? "on" : ""} onClick={() => jump(page, i)}>{t}</p>
+          <button key={i} id={"p" + i} type="button" className={"rd" + (i === idx ? " on" : "") + (i === idx && !hl ? " whole" : "")} onClick={() => jump(page, i)}>
+            {i === idx && hl
+              ? splitChunks(t).map((c, j) => <span key={j} className={j === chunk ? "spk" : ""}>{c}{" "}</span>)
+              : t}
+          </button>
         ))}
       </div>
 
-      {!sheet && status === "ready" && (
-        <button className="fab" aria-label="Open notes" onClick={openSheet}>
-          <Icon d={<path d="M4 20l4-1 11-11-3-3L5 16z" />} />
-        </button>
+      {!panel && status === "ready" && (
+        <button className="fab2" aria-label="Open notes" onClick={openNotes}><Icon d={P.pencil} /></button>
       )}
 
-      {sheet && (
+      <div className="player">
+        <div className="in">
+          <div className="row between muted sm"><span>Paragraph {paras.length ? idx + 1 : 0} of {paras.length}</span><span>Page {page}</span></div>
+          <div className="wave" role="img" aria-label={`Progress on this page, ${pct} percent`}>
+            {BARS.map((h, i) => <i key={i} className={(i / BARS.length) * 100 < pct ? "on" : ""} style={{ height: h * 2 }} />)}
+          </div>
+          <div className="ctrl">
+            <button className="ib" style={{ width: 52, height: 52 }} aria-label="Previous paragraph" onClick={() => move(-1)}><Icon size={28} d={P.prev} /></button>
+            <button className="play" aria-label={playing ? "Pause" : "Play"} onClick={toggle} disabled={status !== "ready"}>
+              <Icon size={30} fill d={playing ? P.pause : P.play} />
+            </button>
+            <button className="ib" style={{ width: 52, height: 52 }} aria-label="Next paragraph" onClick={() => move(1)}><Icon size={28} d={P.next} /></button>
+          </div>
+          <div className="pills">
+            <button className="pill" onClick={() => setPanel("voice")}><Icon size={16} d={P.speed} />{rate}x</button>
+            <button className="pill" onClick={() => setPanel("voice")}><Icon size={16} d={P.mic} />{currentVoice ? voiceName(currentVoice) : "Voice"}</button>
+            <button className="pill" onClick={() => setPanel("voice")}><Icon size={16} d={P.moon} />{sleepMin ? `${sleepMin} min` : "Sleep"}</button>
+          </div>
+        </div>
+      </div>
+
+      {panel && <button className="scrim" aria-label="Close" onClick={closePanel} />}
+
+      {panel === "notes" && (
         <div className="sheet" role="dialog" aria-label="Notes">
-          <div className="grab" />
+          <div className="grab" style={{ margin: "0 auto" }} />
           <div className="row between">
-            <b style={{ fontSize: 18 }}>Notes · Page {draft.id ? draft.page : page}</b>
-            <div className="row">
-              <span className="badge">{syncLabel}</span>
-              <button className="icon" aria-label="Close notes" onClick={closeSheet}>
-                <Icon d={<path d="M6 6l12 12M18 6L6 18" />} />
-              </button>
+            <h2 className="sh">Notes</h2>
+            <div className="row" style={{ gap: 4 }}>
+              <span className="badge"><Icon size={14} d={P.check} />{syncLabel}</span>
+              <button className="ib" aria-label="Close notes" onClick={closeNotes}><Icon d={P.close} /></button>
             </div>
           </div>
-          <div className="row" style={{ flexWrap: "wrap" }}>
-            {(!draft.id || draft.page === page) && (
-              <button className={"chip" + (draft.paragraph != null ? " on" : "")} onClick={() => editDraft({ paragraph: draft.paragraph != null ? null : idx })}>
-                {draft.paragraph != null ? `Pinned to paragraph ${draft.paragraph + 1}` : "Pin to current paragraph"}
-              </button>
-            )}
-            <button className="chip" onClick={startNewNote}>New note</button>
-            {draft.id && <button className="chip" onClick={deleteDraft}>Delete</button>}
+          <div className="seg">
+            <button className={!showAll ? "on" : ""} onClick={() => setShowAll(false)}>This page</button>
+            <button className={showAll ? "on" : ""} onClick={() => setShowAll(true)}>All notes ({notes.length})</button>
           </div>
+          {draft.paragraph != null && (
+            <div className="nc pinned">
+              <span style={{ color: "var(--accent-text)", flex: "none", marginTop: 2 }}><Icon size={18} d={P.pin} /></span>
+              <div>
+                <b style={{ color: "var(--accent-text)" }}>Pinned to paragraph {draft.paragraph + 1}</b>
+                {pinnedText && <div className="muted">{pinnedText.slice(0, 90)}…</div>}
+              </div>
+            </div>
+          )}
           <textarea className="noteArea" value={draft.body} onChange={(e) => editDraft({ body: e.target.value })} placeholder="Write a note. It saves on this device as you type, even offline." aria-label="Note text" />
-          <div className="row between muted">
-            <span>{pageNotes.length} on this page · {notes.length} in this PDF</span>
-            <button className="chip" onClick={() => setShowAll(!showAll)}>{showAll ? "Show this page" : "Show all notes"}</button>
+          <div className="tools">
+            {(!draft.id || draft.page === page) && (
+              <button className={"tool" + (draft.paragraph != null ? " on" : "")} onClick={() => editDraft({ paragraph: draft.paragraph != null ? null : idx })}>Pin</button>
+            )}
+            <button className="tool" onClick={addBullet}>• List</button>
+            <button className="tool" onClick={startNewNote}>New note</button>
+            {draft.id && <button className="tool del" onClick={deleteDraft}>Delete</button>}
           </div>
-          <div className="nlist">
+          <div className="lbl">{showAll ? "ALL NOTES IN THIS PDF" : "ON THIS PAGE"}</div>
+          <div className="grow">
+            {(showAll ? notes : pageNotes).length === 0 && <div className="muted sm">No notes here yet.</div>}
             {(showAll ? notes : pageNotes).map((n) => (
-              <div key={n.id} className={"nitem" + (n.id === draft.id ? " on" : "")}>
+              <div key={n.id} className="nc nitem" style={{ marginBottom: 8, borderColor: n.id === draft.id ? "var(--accent)" : undefined }}>
                 <button className="nbtn" onClick={() => openNote(n)}>
-                  <span className="muted">Page {n.page}{n.paragraph != null ? ` · paragraph ${n.paragraph + 1}` : ""}</span>
+                  <span className="muted sm">Page {n.page}{n.paragraph != null ? ` · Paragraph ${n.paragraph + 1}` : ""}</span>
                   <span>{n.body.slice(0, 90) || "(empty)"}</span>
                 </button>
-                {n.page !== page && <button className="chip" onClick={() => goPage(n.page)}>Go to page</button>}
+                {n.page !== page && <button className="tool" onClick={() => goPage(n.page)}>Go to page</button>}
               </div>
             ))}
           </div>
           <div className="mini">
-            <button className="icon" aria-label="Previous paragraph" onClick={() => move(-1)}><Icon d={<path d="M6 5v14M20 5L9 12l11 7z" />} /></button>
-            <button className="pp" aria-label={playing ? "Pause" : "Play"} onClick={toggle}>
-              {playing ? <Icon fill d={<><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></>} /> : <Icon fill d={<path d="M7 4l13 8-13 8z" />} />}
-            </button>
-            <button className="icon" aria-label="Next paragraph" onClick={() => move(1)}><Icon d={<path d="M18 5v14M4 5l11 7-11 7z" />} /></button>
-            <span style={{ flex: 1 }}>{playing ? "Playing" : "Paused"} · Paragraph {idx + 1} · {rate}x</span>
+            <button className="ib" aria-label="Previous paragraph" onClick={() => move(-1)}><Icon size={22} d={P.prev} /></button>
+            <button className="pp" aria-label={playing ? "Pause" : "Play"} onClick={toggle}><Icon size={20} fill d={playing ? P.pause : P.play} /></button>
+            <button className="ib" aria-label="Next paragraph" onClick={() => move(1)}><Icon size={22} d={P.next} /></button>
+            <div style={{ flex: 1, fontSize: 13 }}><b>{playing ? "Still reading" : "Paused"}</b><div className="muted sm">Paragraph {idx + 1} · {rate}x</div></div>
           </div>
         </div>
       )}
 
-      <div className="player">
-        <div className="inner">
-          <div className="row between muted">
-            <span>Paragraph {paras.length ? idx + 1 : 0} of {paras.length}</span>
-            <span>Page {page}</span>
+      {panel === "voice" && (
+        <div className="sheet" role="dialog" aria-label="Voice and speed">
+          <div className="grab" style={{ margin: "0 auto" }} />
+          <div className="row between">
+            <h2 className="sh">Voice and speed</h2>
+            <button className="ib" aria-label="Close" onClick={() => setPanel(null)}><Icon d={P.close} /></button>
           </div>
-          <div className="bar"><i style={{ width: pct + "%" }} /></div>
-          <div className="ctrl">
-            <button className="icon" aria-label="Previous paragraph" onClick={() => move(-1)}>
-              <Icon d={<path d="M6 5v14M20 5L9 12l11 7z" />} />
-            </button>
-            <button className="play" aria-label={playing ? "Pause" : "Play"} onClick={toggle} disabled={status !== "ready"}>
-              {playing ? <Icon fill d={<><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></>} /> : <Icon fill d={<path d="M7 4l13 8-13 8z" />} />}
-            </button>
-            <button className="icon" aria-label="Next paragraph" onClick={() => move(1)}>
-              <Icon d={<path d="M18 5v14M4 5l11 7-11 7z" />} />
-            </button>
+          <div>
+            <div className="bigrate">{rate}<span>x</span></div>
+            <div className="muted sm" style={{ textAlign: "center", marginTop: 4 }}>About {Math.round(rate * 150)} words per minute</div>
           </div>
-          <div className="opts">
-            <div className="rate">
-              <span style={{ minWidth: 44 }}>{rate.toFixed(2).replace(/0$/, "")}x</span>
-              <input type="range" min="0.5" max="3" step="0.25" value={rate} onChange={(e) => changeRate(parseFloat(e.target.value))} aria-label="Speed" />
-            </div>
-            <select value={voiceURI} onChange={(e) => changeVoice(e.target.value)} aria-label="Voice">
-              {voices.length === 0 && <option value="">Default voice</option>}
-              {voices.map((v) => (
-                <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
+          <input type="range" min="0.5" max="3" step="0.25" value={rate} onChange={(e) => changeRate(parseFloat(e.target.value))} aria-label="Reading speed" />
+          <div className="presets">
+            {[0.75, 1, 1.25, 1.5, 2].map((r) => (
+              <button key={r} className={"pre" + (r === rate ? " on" : "")} onClick={() => changeRate(r)}>{r}x</button>
+            ))}
+          </div>
+          <div className="lbl">VOICE</div>
+          <div className="grow vlist">
+            {voiceList.length === 0 && <div className="muted sm">No voices found on this device.</div>}
+            {voiceList.map((v, n) => {
+              const sel = v.voiceURI === voiceURI;
+              const name = voiceName(v);
+              return (
+                <div key={v.voiceURI} className={"vc" + (sel ? " sel" : "")}>
+                  <button className="vsel" aria-pressed={sel} onClick={() => changeVoice(v.voiceURI)}>
+                    <span className="av" style={{ background: PAL[n % PAL.length] }}>{(name[0] || "?").toUpperCase()}</span>
+                    <span className="vt"><b>{name}</b><span className="muted sm">{v.lang}{v.localService ? " · On device" : " · Needs internet"}</span></span>
+                  </button>
+                  <button className="pv" aria-label={`Preview ${name}`} onClick={() => previewVoice(v)}><Icon size={16} fill d={P.play} /></button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="row between">
+            <span style={{ fontSize: 15, fontWeight: 500 }}>Highlight the spoken sentence</span>
+            <button className={"sw" + (hl ? " on" : "")} role="switch" aria-checked={hl} aria-label="Highlight the spoken sentence" onClick={() => changeHl(!hl)}><i /></button>
+          </div>
+          <div className="row between">
+            <span style={{ fontSize: 15, fontWeight: 500 }}>Sleep timer</span>
+            <div className="row" style={{ gap: 6 }}>
+              {[0, 15, 30, 60].map((m) => (
+                <button key={m} className={"chip sm" + (sleepMin === m ? " on" : "")} onClick={() => setSleep(m)}>{m === 0 ? "Off" : `${m}m`}</button>
               ))}
-            </select>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </>
   );
 }
