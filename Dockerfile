@@ -1,32 +1,15 @@
-# Stage 1: Build Frontend
-FROM node:20 AS frontend
+FROM node:20-slim AS frontend
 WORKDIR /app/frontend
-
-# Install build tools required for native C++ node modules
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
-
-COPY frontend/package*.json ./
-
-# Increase memory limit for Node.js to prevent out-of-memory crashes on free tiers
-ENV NODE_OPTIONS="--max_old_space_size=4096"
-
-# Force install, completely ignore secondary crashing scripts, and disable heavy audits
-RUN npm install --force --ignore-scripts --no-audit --no-fund
-
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --ignore-scripts
 COPY frontend/ ./
-RUN npm run build
+RUN node scripts/copy-worker.js && npm run build
 
-# Stage 2: Python Backend & Final Container
 FROM python:3.12-slim
 WORKDIR /app
-
-COPY backend/requirements.txt ./backend/
+COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
-
-COPY backend/ ./backend/
-COPY --from=frontend /app/frontend/out ./frontend/out
-
+COPY backend/ backend/
+COPY --from=frontend /app/frontend/out frontend/out
 WORKDIR /app/backend
-ENV PYTHONPATH=/app/backend
-
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
