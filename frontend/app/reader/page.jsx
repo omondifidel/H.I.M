@@ -390,12 +390,26 @@ function Reader() {
         let blob = null;
         try { blob = await idbGet("pdfs", id); } catch {}
         if (!blob) {
-          const res = await api(`/api/documents/${id}/file`, { raw: true });
+          let res;
+          try {
+            res = await api(`/api/documents/${id}/file`, { raw: true });
+          } catch (e) {
+            if (e.status === 404 || e.status === 500) {
+              throw new Error("This PDF's file is no longer on the server. Go back to the library, delete it, and upload it again.");
+            }
+            throw e;
+          }
           blob = await res.blob();
           try { await idbPut("pdfs", id, blob); } catch {}
         }
         const data = new Uint8Array(await blob.arrayBuffer());
-        const pdf = await pdfjs.getDocument({ data }).promise;
+        const task = pdfjs.getDocument({ data });
+        task.onPassword = (update, reason) => {
+          const pw = window.prompt(reason === 2 ? "Wrong password. Try again:" : "This PDF is password-protected. Enter the password:");
+          if (pw) update(pw);
+          else task.destroy();
+        };
+        const pdf = await task.promise;
         if (dead) return;
         pdfRef.current = pdf;
         numRef.current = pdf.numPages;
@@ -425,7 +439,10 @@ function Reader() {
         if (ps.length === 0) setError("No readable text found in the first pages. This may be a scanned PDF (it needs OCR, coming later).");
         setStatus("ready");
       } catch (e) {
-        if (!dead) { setStatus("error"); setError(e.message || "Could not open this PDF."); }
+        if (!dead) {
+          setStatus("error");
+          setError(e.name === "PasswordException" ? "This PDF needs a password. Reload the page to try again." : e.message || "Could not open this PDF.");
+        }
       }
     })();
     return () => {

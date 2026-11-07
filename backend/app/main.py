@@ -20,11 +20,6 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 
 load_dotenv()
 DATABASE_URL = os.environ["DATABASE_URL"]
-# Normalize provider URLs (Render/Railway give postgres:// or postgresql://)
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
-elif DATABASE_URL.startswith("postgresql://") and "+" not in DATABASE_URL.split("://", 1)[0]:
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 SECRET_KEY = os.environ["SECRET_KEY"]
 INVITE_CODE = os.environ.get("INVITE_CODE", "")
 STORAGE = Path(os.environ.get("STORAGE_DIR", "./storage"))
@@ -197,7 +192,10 @@ async def upload_document(file: UploadFile = File(...), user: User = Depends(cur
 @app.get("/api/documents/{doc_id}/file")
 def download_document(doc_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     own_doc(db, user, doc_id)
-    return FileResponse(STORAGE / f"{doc_id}.pdf", media_type="application/pdf")
+    path = STORAGE / f"{doc_id}.pdf"
+    if not path.exists():
+        raise HTTPException(404, "The file for this PDF is missing on the server")
+    return FileResponse(path, media_type="application/pdf")
 
 
 @app.delete("/api/documents/{doc_id}", status_code=204)

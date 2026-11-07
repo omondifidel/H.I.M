@@ -19,7 +19,7 @@ export async function api(path, { method = "GET", body, form, raw } = {}) {
     window.dispatchEvent(new Event("auth-lost"));
   }
   if (!res.ok) {
-    let msg = res.statusText || "Request failed";
+    let msg = res.statusText || `Request failed (error ${res.status})`;
     try {
       const j = await res.json();
       if (typeof j.detail === "string") msg = j.detail;
