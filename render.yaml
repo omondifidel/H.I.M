@@ -16,15 +16,11 @@ services:
       - key: INVITE_CODE
         value: friends2025
       - key: STORAGE_DIR
-        value: /var/data/storage
+        value: ./storage
       - key: CORS_ORIGINS
         value: https://readaloud-pdf.onrender.com
       - key: MAX_UPLOAD_MB
         value: "100"
-    disk:
-      name: storage
-      mountPath: /var/data
-      sizeGB: 1
 
 databases:
   - name: readaloud-db
