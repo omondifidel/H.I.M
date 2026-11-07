@@ -2,13 +2,16 @@
 FROM node:20 AS frontend
 WORKDIR /app/frontend
 
-# Install build tools required for native C++ node modules (e.g., pdf.js, canvas, sharp)
+# Install build tools required for native C++ node modules
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 COPY frontend/package*.json ./
 
-# Force install dependencies and disable heavy audit/funding network requests to conserve build memory
-RUN npm install --force --no-audit --no-fund
+# Increase memory limit for Node.js to prevent out-of-memory crashes on free tiers
+ENV NODE_OPTIONS="--max_old_space_size=4096"
+
+# Force install, completely ignore secondary crashing scripts, and disable heavy audits
+RUN npm install --force --ignore-scripts --no-audit --no-fund
 
 COPY frontend/ ./
 RUN npm run build
