@@ -20,6 +20,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 
 load_dotenv()
 DATABASE_URL = os.environ["DATABASE_URL"]
+# Hosts such as Neon give "postgresql://..." links; this app uses the psycopg 3 driver.
+for _prefix in ("postgres://", "postgresql://"):
+    if DATABASE_URL.startswith(_prefix):
+        DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len(_prefix):]
+        break
 SECRET_KEY = os.environ["SECRET_KEY"]
 INVITE_CODE = os.environ.get("INVITE_CODE", "")
 STORAGE = Path(os.environ.get("STORAGE_DIR", "./storage"))
