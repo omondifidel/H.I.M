@@ -20,6 +20,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 
 load_dotenv()
 DATABASE_URL = os.environ["DATABASE_URL"]
+# Normalize provider URLs (Render/Railway give postgres:// or postgresql://)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://") and "+" not in DATABASE_URL.split("://", 1)[0]:
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 SECRET_KEY = os.environ["SECRET_KEY"]
 INVITE_CODE = os.environ.get("INVITE_CODE", "")
 STORAGE = Path(os.environ.get("STORAGE_DIR", "./storage"))
