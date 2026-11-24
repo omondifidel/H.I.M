@@ -2,15 +2,15 @@ import "./globals.css";
 import RegisterSW from "../components/RegisterSW";
 
 export const metadata = {
-  title: "Read-Aloud PDF",
-  description: "Listen to your PDFs",
+  title: "HIM Ministries · Library",
+  description: "A thoughtful home for reading, reflection, and learning.",
   manifest: "/manifest.json",
-  icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
+  icons: { icon: "/favicon.svg", apple: "/favicon.svg" },
 };
-export const viewport = { width: "device-width", initialScale: 1, themeColor: "#0E1018" };
+export const viewport = { width: "device-width", initialScale: 1, themeColor: "#FFFFFF" };
 
 // Sets the saved theme before the page paints, so there is no flash of the wrong colors.
-const themeScript = `try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
+const themeScript = `try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark"||t==="bluewhite")document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
 
 export default function RootLayout({ children }) {
   return (
