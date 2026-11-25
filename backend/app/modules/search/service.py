@@ -74,10 +74,24 @@ def snippet_parts(s: str) -> list[dict]:
     return parts
 
 
-def _sqlite_search(db: Session, user: User, parsed: Parsed, kind: str, limit: int) -> dict:
+def _filters(db: Session, user: User, kind: str, speaker: str) -> list:
+    """Who may see what, plus the category: sermons / books / notes, or one speaker's sermons."""
     where = [_visible(db, user)]
-    if kind in KINDS:
+    if speaker:
+        where += [SearchChunk.kind == "sermon", func.lower(SearchChunk.speaker) == speaker.strip().lower()]
+    elif kind in KINDS:
         where.append(SearchChunk.kind == kind)
+    return where
+
+
+def speakers(db: Session) -> list[str]:
+    """Everyone whose sermons can be searched (sermons are open to all), for the "Sir Elvin's sermons" filter."""
+    return sorted(db.scalars(select(SearchChunk.speaker).where(SearchChunk.kind == "sermon", SearchChunk.speaker != "")
+                             .distinct()).all(), key=str.lower)
+
+
+def _sqlite_search(db: Session, user: User, parsed: Parsed, kind: str, limit: int, speaker: str = "") -> dict:
+    where = _filters(db, user, kind, speaker)
     chunks = db.execute(select(SearchChunk).where(*where)).scalars().all()
 
     def _has_phrase(norm_text: str, phrase: str) -> bool:
@@ -108,7 +122,7 @@ def _sqlite_search(db: Session, user: User, parsed: Parsed, kind: str, limit: in
         marked = pat.sub(f"{ON}\\1{OFF}", window)
         start = exact_second(raw, ch.start, ch.times, needles) if ch.kind == "sermon" else ch.start
         results.append({
-            "kind": ch.kind, "id": ch.source_id, "title": ch.title, "page": ch.page,
+            "kind": ch.kind, "id": ch.source_id, "title": ch.title, "page": ch.page, "speaker": ch.speaker or "",
             "start": start, "snippet": snippet_parts(marked), "mine": ch.user_id == user.id,
             "score": round(float(hits) * 0.1, 4),
         })
@@ -116,18 +130,18 @@ def _sqlite_search(db: Session, user: User, parsed: Parsed, kind: str, limit: in
             "results": results}
 
 
-def search(db: Session, user: User, q: str, kind: str = "all", limit: int = 30) -> dict:
+def search(db: Session, user: User, q: str, kind: str = "all", limit: int = 30, speaker: str = "") -> dict:
     parsed = parse(q)
     if parsed.empty:
         raise BadRequest("Type a word, a phrase in quotes, or a Bible verse to search for")
     if kind == "all" and parsed.kind:
         kind = parsed.kind
+    if speaker:
+        kind = "sermon"
     if db.bind is not None and db.bind.dialect.name == "sqlite":
-        return _sqlite_search(db, user, parsed, kind, limit)
+        return _sqlite_search(db, user, parsed, kind, limit, speaker)
     must, rank = _queries(parsed)
-    where = [SearchChunk.tsv.op("@@")(must), _visible(db, user)]
-    if kind in KINDS:
-        where.append(SearchChunk.kind == kind)
+    where = [SearchChunk.tsv.op("@@")(must), *_filters(db, user, kind, speaker)]
     # rank first, then build snippets only for the rows that are returned
     top = (select(SearchChunk.id, func.ts_rank_cd(SearchChunk.tsv, rank).label("rank"))
            .where(*where).order_by(func.ts_rank_cd(SearchChunk.tsv, rank).desc(), SearchChunk.id).limit(limit).subquery())
@@ -138,6 +152,7 @@ def search(db: Session, user: User, q: str, kind: str = "all", limit: int = 30) 
     for chunk, score, headline in rows:
         start = exact_second(chunk.text, chunk.start, chunk.times, needles) if chunk.kind == "sermon" else chunk.start
         results.append({"kind": chunk.kind, "id": chunk.source_id, "title": chunk.title, "page": chunk.page,
+                        "speaker": chunk.speaker or "",
                         "start": start, "snippet": snippet_parts(headline), "mine": chunk.user_id == user.id,
                         "score": round(float(score), 4)})
     return {"kind": kind, "parsed": {"phrases": parsed.phrases, "refs": [r[0] for r in parsed.refs], "terms": parsed.terms},

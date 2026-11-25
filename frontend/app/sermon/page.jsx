@@ -65,7 +65,7 @@ function Sermon() {
         <Link className="chip sm" href="/" style={{ display: "inline-flex", alignItems: "center" }}>← Back</Link>
         {data.mine && <a className="chip sm" href={`/transcribe/editor/?id=${data.id}`} style={{ display: "inline-flex", alignItems: "center" }}>Edit in Transcribe</a>}
       </div>
-      <div className="greet" style={{ marginTop: 16 }}>Sermon · {clock(data.duration)}</div>
+      <div className="greet" style={{ marginTop: 16 }}>Sermon{data.speaker ? ` · ${data.speaker}` : ""} · {clock(data.duration)}</div>
       <h1 className="title">{data.title}</h1>
 
       <div className="sermon-player">

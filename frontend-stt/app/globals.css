@@ -151,3 +151,4 @@ select.input{appearance:auto}
 .snote{display:flex;gap:8px;align-items:flex-start;width:100%}
 .snote .pbody{flex:1}
 .snote .pbody textarea{font-family:inherit;font-size:15px;background:var(--surface2);border-radius:10px;padding:6px 10px}
+.etop .tin.speaker{flex:0 1 180px;min-width:110px;font-size:14px;font-weight:500;color:var(--muted)}

@@ -13,6 +13,8 @@ function NewForm({ engine, onStarted, disabled }) {
   const [file, setFile] = useState(null);
   const [over, setOver] = useState(false);
   const [title, setTitle] = useState("");
+  // who preached; remembered, since most recordings are by the same person
+  const [speaker, setSpeaker] = useState(() => { try { return localStorage.getItem("stt:speaker") || ""; } catch { return ""; } });
   const [language, setLanguage] = useState("");
   const [mixed, setMixed] = useState(true);
   const [bible, setBible] = useState(true);
@@ -28,7 +30,8 @@ function NewForm({ engine, onStarted, disabled }) {
   function submit(e) {
     e.preventDefault();
     if (!file) return;
-    onStarted(file, { filename: file.name, size: file.size, title: title.trim() || undefined, language: mixed ? null : language || null, vocabulary: vocab, bible, mixed });
+    try { localStorage.setItem("stt:speaker", speaker.trim()); } catch {}
+    onStarted(file, { filename: file.name, size: file.size, title: title.trim() || undefined, speaker: speaker.trim(), language: mixed ? null : language || null, vocabulary: vocab, bible, mixed });
     setFile(null); setTitle(""); setVocab("");
   }
 
@@ -48,6 +51,7 @@ function NewForm({ engine, onStarted, disabled }) {
       </div>
 
       <label className="field">Title<input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sunday service, 9 Nov" /></label>
+      <label className="field">Speaker<input className="input" value={speaker} onChange={(e) => setSpeaker(e.target.value)} placeholder="Sir Elvin" maxLength={120} /></label>
 
       <label className="check">
         <input type="checkbox" checked={mixed} onChange={(e) => setMixed(e.target.checked)} />

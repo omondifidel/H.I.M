@@ -16,6 +16,7 @@ class Transcription(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     title: Mapped[str] = mapped_column(String(300))
+    speaker: Mapped[str] = mapped_column(String(120), default="")  # who preached, e.g. "Sir Elvin"
     original_name: Mapped[str] = mapped_column(String(300))
     size: Mapped[int] = mapped_column(Integer)
     language: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # None = detect automatically

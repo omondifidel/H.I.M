@@ -71,7 +71,7 @@ def index_sermon(db: Session, job: Transcription) -> None:
         for seg in segments[para["first"]:para["last"] + 1]:
             times.append([offset, seg["start"]])
             offset += len(seg["text"]) + 1  # paragraphs join their sentences with one space
-        db.add(SearchChunk(kind="sermon", source_id=job.id, user_id=job.user_id, title=job.title,
+        db.add(SearchChunk(kind="sermon", source_id=job.id, user_id=job.user_id, title=job.title, speaker=job.speaker or "",
                            start=para["start"], text=para["text"], times=times))
     for note in job.notes or []:
         if (note.get("body") or "").strip():

@@ -1,6 +1,6 @@
 "use client";
 // Deep Word Finder: one search over sermons, books and your notes. Each result opens at the exact page or second.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "../lib/api";
 
@@ -15,32 +15,38 @@ export const clock = (s) => {
 };
 const cleanTitle = (t) => (t || "Untitled").replace(/\.pdf$/i, "");
 
-/** Where a result opens: sermons and sermon notes at the second, books and book notes at the page. */
-export function resultHref(r) {
+/** Where a result opens: sermons and sermon notes at the second, books and book notes at the page,
+ *  carrying the searched words so the reader opens at the paragraph that has them. */
+export function resultHref(r, find = "") {
   if (r.start != null) return `/sermon/?id=${r.id}&t=${Math.floor(r.start)}`;
-  return `/reader/?id=${r.id}&page=${r.page || 1}`;
+  return `/reader/?id=${r.id}&page=${r.page || 1}${find ? `&find=${encodeURIComponent(find)}` : ""}`;
 }
 
 export default function DeepSearch() {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("all");
+  const [speaker, setSpeaker] = useState(""); // "Sir Elvin's sermons"
+  const [speakers, setSpeakers] = useState([]);
   const [res, setRes] = useState(null);
+  useEffect(() => { api("/api/search/speakers").then(setSpeakers).catch(() => {}); }, []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  async function run(text = q, k = kind) {
+  async function run(text = q, k = kind, who = speaker) {
     if (!text.trim()) return;
     setBusy(true);
     setErr("");
     try {
-      setRes(await api(`/api/search?q=${encodeURIComponent(text)}&kind=${k}`));
+      setRes({ ...(await api(`/api/search?q=${encodeURIComponent(text)}&kind=${k}&speaker=${encodeURIComponent(who)}`)), speaker: who });
     } catch (e) {
       setErr(e.message);
       setRes(null);
     }
     setBusy(false);
   }
-  const pickKind = (k) => { setKind(k); if (res) run(q, k); };
+  const pick = (k, who = "") => { setKind(k); setSpeaker(who); if (res) run(q, k, who); };
+  // what to look for on the page a book result opens: the exact phrase, else the verse, else the topic words
+  const find = res ? res.parsed.phrases[0] || res.parsed.refs[0] || res.parsed.terms.join(" ") : "";
   const looking = res && [...res.parsed.phrases.map((p) => `“${p}”`), ...res.parsed.refs, ...res.parsed.terms].join(", ");
 
   return (
@@ -55,7 +61,12 @@ export default function DeepSearch() {
       </form>
       <div className="row" style={{ marginTop: 12, flexWrap: "wrap", gap: 8 }} role="group" aria-label="Search in">
         {KINDS.map(([k, label]) => (
-          <button key={k} type="button" className={"chip sm" + (kind === k ? " on" : "")} aria-pressed={kind === k} onClick={() => pickKind(k)}>{label}</button>
+          <button key={k} type="button" className={"chip sm" + (kind === k && !speaker ? " on" : "")} aria-pressed={kind === k && !speaker} onClick={() => pick(k)}>{label}</button>
+        ))}
+        {speakers.map((name) => (
+          <button key={name} type="button" className={"chip sm" + (speaker === name ? " on" : "")} aria-pressed={speaker === name} onClick={() => pick("sermon", name)}>
+            {name}’s sermons
+          </button>
         ))}
       </div>
       {err && <div className="err" role="alert">{err}</div>}
@@ -73,15 +84,15 @@ export default function DeepSearch() {
         <div aria-live="polite" style={{ marginTop: 18 }}>
           <div className="muted sm">
             {res.results.length ? `${res.results.length} ${res.results.length === 1 ? "match" : "matches"}` : "Nothing found"}
-            {looking && ` for ${looking}`}{res.kind !== "all" && ` in ${KINDS.find(([k]) => k === res.kind)[1].toLowerCase()}`}
+            {looking && ` for ${looking}`}{res.speaker ? ` in ${res.speaker}’s sermons` : res.kind !== "all" && ` in ${KINDS.find(([k]) => k === res.kind)[1].toLowerCase()}`}
           </div>
           {!res.results.length && (
             <p className="muted" style={{ fontSize: 14 }}>Try fewer words, check the spelling, or search “Everything”.</p>
           )}
           {res.results.map((r, i) => (
-            <Link key={i} className="nrow hit" href={resultHref(r)}>
+            <Link key={i} className="nrow hit" href={resultHref(r, find)}>
               <div className="muted sm">
-                <b className="hit-kind">{LABEL[r.kind]}</b> · {cleanTitle(r.title)} · {r.start != null ? `▶ ${clock(r.start)}` : `Page ${r.page}`}
+                <b className="hit-kind">{LABEL[r.kind]}</b>{r.speaker ? ` · ${r.speaker}` : ""} · {cleanTitle(r.title)} · {r.start != null ? `▶ ${clock(r.start)}` : `Page ${r.page}`}
               </div>
               <div className="hit-text">{r.snippet.map((p, j) => (p.hit ? <mark key={j}>{p.t}</mark> : <span key={j}>{p.t}</span>))}</div>
             </Link>

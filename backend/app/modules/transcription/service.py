@@ -70,7 +70,7 @@ def create(db: Session, user: User, data: TranscriptionCreate) -> Transcription:
         raise TooLarge(f"This file is larger than the {settings.max_audio_bytes // (1024 * 1024)} MB limit")
     language = None if data.mixed else ((data.language or "").strip().lower() or None)
     title = (data.title or Path(data.filename).stem or "Untitled recording").strip()[:300]
-    job = Transcription(user_id=user.id, title=title, original_name=data.filename[:300], size=data.size,
+    job = Transcription(user_id=user.id, title=title, speaker=data.speaker.strip()[:120], original_name=data.filename[:300], size=data.size,
                         language=language, vocabulary=data.vocabulary.strip()[:600], bible=data.bible,
                         mixed=data.mixed, chunk_seconds=180 if data.mixed else None)
     db.add(job)
@@ -146,7 +146,7 @@ def transcript(db: Session, user: User, job_id: str) -> TranscriptOut:
     if job.status != "done":
         raise BadRequest("This transcription is not finished yet")
     segments = job.segments or []
-    return TranscriptOut(id=job.id, title=job.title, duration=job.duration,
+    return TranscriptOut(id=job.id, title=job.title, speaker=job.speaker or "", duration=job.duration,
                          segments=[Segment(**s) for s in segments], paragraphs=_paragraphs(segments),
                          notes=job.notes or [])
 
@@ -155,6 +155,8 @@ def patch(db: Session, user: User, job_id: str, data: TranscriptPatch) -> Transc
     job = get_owned(db, user, job_id)
     if data.title is not None:
         job.title = data.title.strip()[:300] or job.title
+    if data.speaker is not None:
+        job.speaker = data.speaker.strip()[:120]
     if data.segments is not None:
         if job.status != "done":
             raise BadRequest("Only finished transcriptions can be edited")
@@ -208,7 +210,7 @@ def _finished(db: Session, job_id: str) -> Transcription:
 
 def sermon(db: Session, user: User, job_id: str) -> SermonOut:
     job = _finished(db, job_id)
-    return SermonOut(id=job.id, title=job.title, duration=job.duration, paragraphs=_paragraphs(job.segments or []),
+    return SermonOut(id=job.id, title=job.title, speaker=job.speaker or "", duration=job.duration, paragraphs=_paragraphs(job.segments or []),
                      mine=job.user_id == user.id, has_audio=original_path(job) is not None)
 
 

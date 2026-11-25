@@ -45,7 +45,7 @@ def db(monkeypatch):
     session.add_all([Document(id="d-private", user_id=pastor.id, title="Pastor's draft.pdf", size=1),
                      Document(id="d-shared", user_id=pastor.id, title="Discipleship Basics.pdf", size=1)])
     session.add(DocumentShare(document_id="d-shared", kind="all", target_id=""))
-    job = Transcription(id="t-1", user_id=pastor.id, title="Faith Sunday", original_name="a.mp3", size=1,
+    job = Transcription(id="t-1", user_id=pastor.id, title="Faith Sunday", speaker="Sir Elvin", original_name="a.mp3", size=1,
                         status="done", segments=SEGMENTS, duration=21, notes=[{"id": "n1", "time": 10, "body": "secret sermon note about mountains"}])
     session.add(job)
     session.commit()
@@ -114,3 +114,17 @@ def test_nothing_found_and_reindex(db):
     assert service.search(s, member, "\"faith moves mountains\"", kind="sermon")["results"] == []
     index.remove_source(s, "d-shared")
     assert kinds(service.search(s, member, "mountains")) == []
+
+
+def test_speaker_filter(db):
+    s, pastor, member, _ = db
+    other = Transcription(id="t-2", user_id=pastor.id, title="Youth night", speaker="Pastor Ann", original_name="b.mp3",
+                          size=1, status="done", duration=5, segments=[{"start": 0.0, "end": 5.0, "text": "Faith moves mountains, young people."}])
+    s.add(other)
+    s.commit()
+    index.index_sermon(s, other)
+    both = service.search(s, member, "\"faith moves mountains\"", kind="sermon")["results"]
+    assert sorted(r["id"] for r in both) == ["t-1", "t-2"]
+    elvin = service.search(s, member, "\"faith moves mountains\"", speaker="sir elvin")["results"]  # any capitals
+    assert [(r["id"], r["speaker"]) for r in elvin] == [("t-1", "Sir Elvin")]
+    assert service.speakers(s) == ["Pastor Ann", "Sir Elvin"]

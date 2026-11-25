@@ -6,6 +6,7 @@ import { api } from "../../lib/api";
 import { idbGet, idbPut } from "../../lib/db";
 import { listNotes, newNoteId, putNote, removeNote, syncNotes } from "../../lib/notes";
 import { extractParagraphs, loadPdfjs } from "../../lib/pdfText";
+import { findParagraph } from "../../lib/findPara";
 import { applyTheme, getTheme, THEMES } from "../../lib/theme";
 import NotificationBell from "../../components/NotificationBell";
 import { useVoice } from "../../lib/useVoice";
@@ -265,6 +266,7 @@ function Reader() {
   const sp = useSearchParams();
   const id = sp.get("id");
   const pageParam = sp.get("page");
+  const findParam = sp.get("find"); // the searched words, when opened from a search result
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [title, setTitle] = useState("");
@@ -850,11 +852,19 @@ function Reader() {
         let p = Math.min(Math.max(1, start.page), pdf.numPages);
         let ps = await getParas(p);
         let startIdx = Math.min(start.idx, Math.max(0, ps.length - 1));
+        // opened from a search result: start at the paragraph with the searched words
+        const hit = forced && findParam ? findParagraph(ps, findParam) : -1;
+        if (hit >= 0) startIdx = hit;
         if (ps.length === 0) {
           const found = await findTextPage(p, 1, 60);
           if (found) { p = found.page; ps = found.paras; startIdx = 0; }
         }
         show(p, startIdx, ps);
+        if (hit >= 0) { // and inside a long paragraph, at the sentence with them
+          const c = Math.max(0, findParagraph(splitChunks(ps[startIdx]), findParam));
+          pos.current.chunk = c;
+          setChunk(c);
+        }
         if (ps.length === 0) setError("No readable text found in the first pages. This may be a scanned PDF (it needs OCR, coming later).");
         setStatus("ready");
         if (sp.get("autoplay") === "1") setTimeout(() => { if (!dead) play(p, startIdx); }, 220);

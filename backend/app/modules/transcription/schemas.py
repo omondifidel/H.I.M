@@ -8,6 +8,7 @@ class TranscriptionCreate(BaseModel):
     filename: str
     size: int = Field(gt=0)
     title: Optional[str] = None
+    speaker: str = Field(default="", max_length=120)  # who preached
     language: Optional[str] = None  # "en", "sw", ... or None to detect
     vocabulary: str = ""
     bible: bool = True
@@ -22,6 +23,7 @@ class TranscriptionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     title: str
+    speaker: str = ""
     original_name: str
     size: int
     language: Optional[str] = None
@@ -68,6 +70,7 @@ class SermonNote(BaseModel):
 class TranscriptOut(BaseModel):
     id: str
     title: str
+    speaker: str = ""
     duration: float
     segments: list[Segment]
     paragraphs: list[Paragraph]
@@ -78,6 +81,7 @@ class SermonOut(BaseModel):
     """Read-only view of a finished sermon, for anyone who found it in search. Notes stay private."""
     id: str
     title: str
+    speaker: str = ""
     duration: float
     paragraphs: list[Paragraph]
     mine: bool
@@ -86,6 +90,7 @@ class SermonOut(BaseModel):
 
 class TranscriptPatch(BaseModel):
     title: Optional[str] = None
+    speaker: Optional[str] = Field(default=None, max_length=120)
     segments: Optional[list[Segment]] = None
     notes: Optional[list[SermonNote]] = Field(default=None, max_length=2000)
 

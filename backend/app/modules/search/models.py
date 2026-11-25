@@ -38,6 +38,7 @@ class SearchChunk(Base):
     item_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # the note, for notes
     user_id: Mapped[str] = mapped_column(String(36))  # owner of the source (books, sermons) or of the note
     title: Mapped[str] = mapped_column(String(300), default="")
+    speaker: Mapped[str] = mapped_column(String(120), default="")  # sermons: who preached
     page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # books and book notes
     start: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # seconds, sermons and sermon notes
     text: Mapped[str] = mapped_column(Text, default="")

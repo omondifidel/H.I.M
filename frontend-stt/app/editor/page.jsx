@@ -97,6 +97,8 @@ function Editor() {
   const audioRef = useRef(null);
   const parasRef = useRef([]);
   const titleRef = useRef("");
+  const speakerRef = useRef(""); // who preached: powers "Sir Elvin's sermons" in search
+  const [speaker, setSpeaker] = useState("");
   const history = useRef([]);
   const saveTimer = useRef(null);
   const areas = useRef({});
@@ -117,7 +119,7 @@ function Editor() {
     try { localStorage.setItem("draft:" + id, JSON.stringify({ title: titleRef.current, segments })); } catch {}
     setSave("saving");
     try {
-      await api(`/api/transcriptions/${id}`, { method: "PATCH", body: { title: titleRef.current, segments } });
+      await api(`/api/transcriptions/${id}`, { method: "PATCH", body: { title: titleRef.current, speaker: speakerRef.current, segments } });
       try { localStorage.removeItem("draft:" + id); } catch {}
       setSave("saved");
     } catch (e) {
@@ -174,6 +176,7 @@ function Editor() {
           name = draft.title || name;
         }
         setTitle(name); titleRef.current = name;
+        setSpeaker(data.speaker || ""); speakerRef.current = data.speaker || "";
         parasRef.current = list; setParas(list);
         setDur(data.duration);
         notesRef.current = data.notes || []; setNotes(notesRef.current);
@@ -431,6 +434,8 @@ function Editor() {
       <div className="etop">
         <a className="btn ghost" style={{ height: 40 }} href="/transcribe/" onClick={(e) => { if (save !== "saved") { e.preventDefault(); flush().then(() => { window.location.href = "/transcribe/"; }); } }}>Back</a>
         <input className="tin" value={title} aria-label="Title" onChange={(e) => { setTitle(e.target.value); titleRef.current = e.target.value; markDirty(); }} />
+        <input className="tin speaker" value={speaker} aria-label="Speaker" placeholder="Speaker" maxLength={120}
+          onChange={(e) => { setSpeaker(e.target.value); speakerRef.current = e.target.value; markDirty(); }} />
         <span className="meta-pill">{wordCount} words · ~{readMins}m read</span>
         <span className={"sv " + (save === "error" ? "error" : "")} role="status">{saveLabel}</span>
         <div className="tools">
