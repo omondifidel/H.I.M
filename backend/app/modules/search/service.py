@@ -16,6 +16,7 @@ from app.modules.auth.models import User
 from app.modules.auth.service import user_apps
 from app.modules.library.models import DocumentShare
 from app.modules.library.service import _share_condition
+from app.modules.search import vectors
 from app.modules.search.models import SearchChunk
 from app.modules.search.query import Parsed, parse
 
@@ -141,19 +142,28 @@ def search(db: Session, user: User, q: str, kind: str = "all", limit: int = 30, 
     if db.bind is not None and db.bind.dialect.name == "sqlite":
         return _sqlite_search(db, user, parsed, kind, limit, speaker)
     must, rank = _queries(parsed)
-    where = [SearchChunk.tsv.op("@@")(must), *_filters(db, user, kind, speaker)]
-    # rank first, then build snippets only for the rows that are returned
-    top = (select(SearchChunk.id, func.ts_rank_cd(SearchChunk.tsv, rank).label("rank"))
-           .where(*where).order_by(func.ts_rank_cd(SearchChunk.tsv, rank).desc(), SearchChunk.id).limit(limit).subquery())
-    rows = db.execute(select(SearchChunk, top.c.rank, func.ts_headline("simple", SearchChunk.text, rank, HEADLINE))
-                      .join(top, top.c.id == SearchChunk.id).order_by(top.c.rank.desc(), SearchChunk.id)).all()
+    filters = _filters(db, user, kind, speaker)
+    by_words = list(db.scalars(select(SearchChunk.id).where(SearchChunk.tsv.op("@@")(must), *filters)
+                               .order_by(func.ts_rank_cd(SearchChunk.tsv, rank).desc(), SearchChunk.id).limit(limit)))
+    ids, how = by_words, dict.fromkeys(by_words, "words")
+    # Topics also search by meaning ("trusting God in hard times"); exact phrases and verses stay exact.
+    if not parsed.phrases and not parsed.refs and vectors.enabled(db):
+        asked = vectors.embed([q], "RETRIEVAL_QUERY")
+        if asked:
+            by_meaning = [i for i, _ in vectors.nearest(db, asked[0], filters, limit)]
+            ids = vectors.fuse(by_words, by_meaning)[:limit]
+            how.update({i: "both" if i in how else "meaning" for i in by_meaning})
+    # snippets only for the rows that are returned
+    order = {i: n for n, i in enumerate(ids)}
+    rows = sorted(db.execute(select(SearchChunk, func.ts_headline("simple", SearchChunk.text, rank, HEADLINE))
+                             .where(SearchChunk.id.in_(ids))).all(), key=lambda row: order[row[0].id])
     needles = parsed.needles()
     results = []
-    for chunk, score, headline in rows:
+    for chunk, headline in rows:
         start = exact_second(chunk.text, chunk.start, chunk.times, needles) if chunk.kind == "sermon" else chunk.start
         results.append({"kind": chunk.kind, "id": chunk.source_id, "title": chunk.title, "page": chunk.page,
-                        "speaker": chunk.speaker or "",
+                        "speaker": chunk.speaker or "", "match": how[chunk.id],
                         "start": start, "snippet": snippet_parts(headline), "mine": chunk.user_id == user.id,
-                        "score": round(float(score), 4)})
+                        "score": round(1 / (order[chunk.id] + 1), 4)})
     return {"kind": kind, "parsed": {"phrases": parsed.phrases, "refs": [r[0] for r in parsed.refs], "terms": parsed.terms},
             "results": results}
