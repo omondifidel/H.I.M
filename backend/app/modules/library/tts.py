@@ -1,6 +1,10 @@
 import hashlib
+import os
+import ssl
 from pathlib import Path
+
 import edge_tts
+import edge_tts.communicate
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -17,6 +21,14 @@ HUMAN_VOICES = {
 }
 
 LEGACY_MAP = {"aria": "ann", "sonia": "mary"}
+
+
+# edge-tts pins its own certificate list on every connection. Where antivirus (e.g. Avast) or a company
+# proxy inspects HTTPS, honour SSL_CERT_FILE like the rest of the app does, or every voice fails with
+# CERTIFICATE_VERIFY_FAILED. Without SSL_CERT_FILE (the normal case, e.g. Render) nothing changes.
+# ponytail: swaps a private edge-tts setting; re-check after upgrading edge-tts
+if os.environ.get("SSL_CERT_FILE") and hasattr(edge_tts.communicate, "_SSL_CTX"):
+    edge_tts.communicate._SSL_CTX = ssl.create_default_context(cafile=os.environ["SSL_CERT_FILE"])
 
 
 class SpeakRequest(BaseModel):
