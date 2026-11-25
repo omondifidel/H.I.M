@@ -58,10 +58,10 @@ const localDayKey = () => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
-function PdfPageView({ pdf, pageNumber, paras, activeIdx, onSelectPara, onFail }) {
+function PdfPageView({ pdf, pageNumber, paras, activeIdx, activeChunk, hlEnabled, onSelectPara }) {
   const canvasRef = useRef(null);
   const [failed, setFailed] = useState(false);
-  const [bands, setBands] = useState([]);
+  const [pageData, setPageData] = useState({ lines: [], paraRanges: [] });
 
   useEffect(() => {
     let active = true;
@@ -79,16 +79,11 @@ function PdfPageView({ pdf, pageNumber, paras, activeIdx, onSelectPara, onFail }
         canvas.width = Math.ceil(viewport.width * ratio);
         canvas.height = Math.ceil(viewport.height * ratio);
         canvas.style.width = "100%";
-        renderTask = page.render({
-          canvasContext: context,
-          viewport,
-          transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0],
-        });
+        renderTask = page.render({ canvasContext: context, viewport, transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0] });
         await renderTask.promise;
-
         const tc = await page.getTextContent();
         if (!active) return;
-        const lines = [];
+        const rawLines = [];
         for (const it of tc.items || []) {
           const str = (it.str || "").trim();
           if (!str) continue;
@@ -96,80 +91,82 @@ function PdfPageView({ pdf, pageNumber, paras, activeIdx, onSelectPara, onFail }
           const [vx, vy] = viewport.convertToViewportPoint(tx[4], tx[5]);
           const h = Math.max(10, Math.abs(tx[3]) * viewport.scale);
           const w = Math.max(8, (it.width || 0) * viewport.scale);
-          const topPct = Math.max(0, Math.min(98, ((vy - h) / viewport.height) * 100));
-          const heightPct = Math.max(1.4, Math.min(100 - topPct, ((h + 4) / viewport.height) * 100));
-          const leftPct = Math.max(0, Math.min(95, (vx / viewport.width) * 100));
-          const rightPct = Math.max(leftPct + 2, Math.min(98, ((vx + w) / viewport.width) * 100));
-          const prev = lines[lines.length - 1];
-          if (prev && Math.abs(prev.vy - vy) < h * 0.55) {
-            prev.leftPct = Math.min(prev.leftPct, leftPct);
-            prev.rightPct = Math.max(prev.rightPct, rightPct);
+          const top = Math.max(0, Math.min(98, ((vy - h * 0.92) / viewport.height) * 100));
+          const height = Math.max(1.2, Math.min(100 - top, ((h * 1.18) / viewport.height) * 100));
+          const left = Math.max(0, Math.min(95, (vx / viewport.width) * 100));
+          const right = Math.max(left + 1.5, Math.min(98, ((vx + w) / viewport.width) * 100));
+          const prev = rawLines[rawLines.length - 1];
+          if (prev && Math.abs(prev.vy - vy) < h * 0.5) {
+            prev.left = Math.min(prev.left, left);
+            prev.right = Math.max(prev.right, right);
             prev.text += " " + str;
           } else {
-            lines.push({ vy, topPct, heightPct, leftPct, rightPct, text: str });
+            rawLines.push({ vy, top, height, left, right, text: str });
           }
         }
-
-        const paraBands = [];
-        if (lines.length && paras?.length) {
-          let lineCursor = 0;
-          for (let i = 0; i < paras.length; i++) {
-            const pText = paras[i].replace(/\s+/g, " ").trim();
-            const startLine = Math.min(lineCursor, lines.length - 1);
-            let accLen = 0;
-            let endLine = startLine;
-            while (endLine < lines.length && accLen < pText.length * 0.85) {
-              accLen += lines[endLine].text.length + 1;
-              endLine++;
-            }
-            const slice = lines.slice(startLine, Math.max(startLine + 1, endLine));
-            lineCursor = Math.max(startLine + 1, endLine);
-            const top = Math.min(...slice.map((l) => l.topPct));
-            const bottom = Math.max(...slice.map((l) => l.topPct + l.heightPct));
-            const left = Math.max(2, Math.min(...slice.map((l) => l.leftPct)) - 1);
-            const right = Math.min(98, Math.max(...slice.map((l) => l.rightPct)) + 1);
-            paraBands.push({ idx: i, top, height: Math.max(2.2, bottom - top), left, width: Math.max(12, right - left) });
-          }
+        const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        let stream = "";
+        const lineSpans = rawLines.map((l, idx) => {
+          const t = norm(l.text);
+          const start = stream.length;
+          stream += (stream ? " " : "") + t;
+          return { idx, start: start ? start + 1 : 0, end: stream.length, ...l };
+        });
+        const paraRanges = [];
+        let searchFrom = 0;
+        for (let i = 0; i < (paras || []).length; i++) {
+          const pNorm = norm(paras[i]);
+          if (!pNorm) { paraRanges.push(null); continue; }
+          const probe = pNorm.slice(0, 48);
+          let pos = stream.indexOf(probe, searchFrom);
+          if (pos === -1 && probe.length > 20) pos = stream.indexOf(probe.slice(0, 20), searchFrom);
+          if (pos === -1) pos = searchFrom;
+          const endPos = Math.min(stream.length, pos + pNorm.length);
+          searchFrom = Math.max(searchFrom, endPos - 12);
+          paraRanges.push({ idx: i, start: pos, end: endPos });
         }
-        setBands(paraBands);
-        onFail?.(false);
-      } catch {
-        if (active) {
-          setFailed(true);
-          onFail?.(true);
-        }
+        setPageData({ lines: lineSpans, paraRanges });
+        setFailed(false);
+      } catch { if (active) setFailed(true); }
+    }
+    setFailed(false); renderPage();
+    return () => { active = false; renderTask?.cancel(); };
+  }, [pdf, pageNumber, paras]);
+  const activeLines = [];
+  const activeRange = pageData.paraRanges[activeIdx];
+  if (activeRange && pageData.lines.length) {
+    let hlStart = activeRange.start, hlEnd = activeRange.end;
+    if (hlEnabled && paras?.[activeIdx]) {
+      const chunks = splitChunks(paras[activeIdx]);
+      const cNorm = (chunks[activeChunk] || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      if (cNorm) {
+        const prefixLen = chunks.slice(0, activeChunk).join(" ").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().length;
+        hlStart = activeRange.start + prefixLen;
+        hlEnd = Math.min(activeRange.end, hlStart + cNorm.length + 4);
       }
     }
-    setFailed(false);
-    renderPage();
-    return () => {
-      active = false;
-      renderTask?.cancel();
-    };
-  }, [pdf, pageNumber, paras]);
-
+    for (const l of pageData.lines) if (l.end >= hlStart && l.start <= hlEnd) activeLines.push(l);
+  }
+  function handleLineClick(line) {
+    const mid = (line.start + line.end) / 2;
+    const hit = pageData.paraRanges.find((r) => r && mid >= r.start - 10 && mid <= r.end + 10);
+    if (hit) onSelectPara?.(hit.idx);
+  }
+  if (failed) return null;
   return (
     <figure className="pdf-page" style={{ position: "relative" }}>
-      {failed ? (
-        <figcaption className="muted sm">This page preview could not be displayed. The readable text is shown below.</figcaption>
-      ) : (
-        <>
-          <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} />
-          <div className="pdf-hl-layer">
-            {bands.map((b) => (
-              <button
-                key={b.idx}
-                id={"p" + b.idx}
-                type="button"
-                aria-label={`Read from paragraph ${b.idx + 1}`}
-                className={"pdf-para-band" + (b.idx === activeIdx ? " on" : "")}
-                style={{ top: `${b.top}%`, height: `${b.height}%`, left: `${b.left}%`, width: `${b.width}%` }}
-                onClick={() => onSelectPara?.(b.idx)}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} />
+      <div className="pdf-hl-layer">
+        {pageData.lines.map((l) => (
+          <button key={"hit-" + l.idx} type="button" aria-label="Read from this line" className="pdf-line-hit"
+            style={{ top: `${l.top}%`, height: `${l.height}%`, left: `${l.left}%`, width: `${Math.max(4, l.right - l.left)}%` }}
+            onClick={() => handleLineClick(l)} />
+        ))}
+        {activeLines.map((l, k) => (
+          <span key={"hl-" + l.idx} id={k === 0 ? "p" + activeIdx : undefined} className="pdf-line-hl"
+            style={{ top: `${l.top}%`, height: `${l.height}%`, left: `${Math.max(1.5, l.left - 0.5)}%`, width: `${Math.min(97, l.right - l.left + 1)}%` }} />
+        ))}
+      </div>
     </figure>
   );
 }
@@ -723,7 +720,7 @@ function Reader() {
 
   // ---- keep the current paragraph in view ----
   useEffect(() => {
-    const el = document.querySelector(".pdf-para-band.on") || document.getElementById("p" + idx);
+    const el = document.querySelector(".pdf-line-hl") || document.getElementById("p" + idx);
     if (!el) return;
     const target = window.innerHeight * (panel === "notes" ? 0.2 : 0.3);
     window.scrollBy({ top: el.getBoundingClientRect().top - target, behavior: "smooth" });
@@ -789,7 +786,7 @@ function Reader() {
         {status === "loading" && <p className="muted">Opening your PDF...</p>}
         {error && <p className="err" role="alert">{error}</p>}
         {status === "ready" && pdfRef.current && (
-          <PdfPageView pdf={pdfRef.current} pageNumber={page} paras={paras} activeIdx={idx} onSelectPara={(i) => jump(page, i)} />
+          <PdfPageView pdf={pdfRef.current} pageNumber={page} paras={paras} activeIdx={idx} activeChunk={chunk} hlEnabled={hl} onSelectPara={(i) => jump(page, i)} />
         )}
         {paras.length === 0 && status === "ready" && !error && (
           <p className="muted" style={{ marginTop: 12 }}>This page has no readable text (a cover, a picture or a scanned page). Use the page arrows to jump to the next page with text.</p>
