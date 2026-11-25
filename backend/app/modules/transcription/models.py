@@ -34,6 +34,7 @@ class Transcription(Base):
     has_audio: Mapped[bool] = mapped_column(Boolean, default=False)
     segments: Mapped[list] = mapped_column(JSON, default=list)  # [{start, end, text, low}]
     text: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[list] = mapped_column(JSON, default=list)  # [{id, time, body}] sermon notes
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     finished_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

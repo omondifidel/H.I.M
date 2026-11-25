@@ -5,6 +5,8 @@ import { api, getToken } from "../../lib/api";
 import { clock } from "../../lib/format";
 import { getAudio, saveAudio } from "../../lib/db";
 import { THEMES, applyTheme, getTheme } from "../../lib/theme";
+import { useVoice } from "../../lib/useVoice";
+import { nextRate } from "../../lib/voice";
 
 let keyCounter = 1000;
 const newKey = () => "n" + keyCounter++;
@@ -89,6 +91,8 @@ function Editor() {
   const [undoCount, setUndoCount] = useState(0);
   const [theme, setTheme] = useState("light");
   useEffect(() => { const t = getTheme(); setTheme(t); applyTheme(t); }, []);
+  const [notes, setNotes] = useState([]); // sermon notes [{id, time, body}]
+  const [showNotes, setShowNotes] = useState(false);
 
   const audioRef = useRef(null);
   const parasRef = useRef([]);
@@ -101,6 +105,9 @@ function Editor() {
   const rewindRef = useRef(true);
   const rateRef = useRef(1);
   const loaded = useRef(false);
+  const notesRef = useRef([]);
+  const notesTimer = useRef(null);
+  const activeNote = useRef(null);
 
   // ---------- saving ----------
   const flush = useCallback(async () => {
@@ -169,6 +176,7 @@ function Editor() {
         setTitle(name); titleRef.current = name;
         parasRef.current = list; setParas(list);
         setDur(data.duration);
+        notesRef.current = data.notes || []; setNotes(notesRef.current);
         loaded.current = true;
         setStatus("ready");
       } catch (e) {
@@ -325,6 +333,74 @@ function Editor() {
     if (area) area.focus({ preventScroll: true });
   }
 
+  // ---------- sermon notes (stamped with the time in the recording) ----------
+  function commitNotes(next) {
+    notesRef.current = next;
+    setNotes(next);
+    setSave("unsaved");
+    clearTimeout(notesTimer.current);
+    notesTimer.current = setTimeout(async () => {
+      try {
+        await api(`/api/transcriptions/${id}`, { method: "PATCH", body: { notes: notesRef.current } });
+        setSave("saved");
+      } catch (e) { setSave("error"); setError(e.message); }
+    }, 800);
+  }
+  function addNote(body = "") {
+    const time = Math.round((audioRef.current ? audioRef.current.currentTime : t) * 10) / 10;
+    const note = { id: crypto.randomUUID(), time, body };
+    commitNotes([...notesRef.current, note].sort((a, b) => a.time - b.time));
+    activeNote.current = note.id;
+    setShowNotes(true);
+    return note;
+  }
+  const editNote = (nid, body) => commitNotes(notesRef.current.map((n) => (n.id === nid ? { ...n, body } : n)));
+  const deleteNote = (nid) => commitNotes(notesRef.current.filter((n) => n.id !== nid));
+
+  // ---------- voice control (mic orb / Ctrl+Space) ----------
+  const voice = useVoice({
+    pause: () => { const a = audioRef.current; const was = !!a && !a.paused; if (was) a.pause(); return was; },
+    resume: () => { audioRef.current?.play().catch(() => {}); },
+    dictate: (text) => {
+      const n = notesRef.current.find((x) => x.id === activeNote.current);
+      if (n) editNote(n.id, n.body + (n.body && !/\s$/.test(n.body) ? " " : "") + text);
+    },
+    command: async ({ cmd, arg }) => {
+      const a = audioRef.current;
+      if (cmd === "pause") { a?.pause(); return; }
+      if (cmd === "resume") { a?.play().catch(() => {}); return; }
+      if (cmd === "rate") { const r = nextRate(rateRef.current, arg, 2); setRate(r); return `Speed ${r}x`; }
+      if (cmd === "minute") { if (a) a.currentTime = Math.min(arg * 60, a.duration || arg * 60); return `Minute ${arg}`; }
+      if (cmd === "page") return "Sermons have no pages. Say “go to minute 5”.";
+      if (cmd === "theme") { setTheme(arg); applyTheme(arg); return `${arg[0].toUpperCase() + arg.slice(1)} mode`; }
+      if (cmd === "bookmark") return `Bookmarked ${clock(addNote("🔖 Bookmark").time)}`;
+      if (cmd === "note") { addNote(); return; }
+      if (cmd === "skip") { skip(arg); return arg < 0 ? `Back ${-arg} seconds` : `Forward ${arg} seconds`; }
+      if (cmd === "turn") return "Sermons have no pages. Say “next paragraph” or “skip forward 30 seconds”.";
+      if (cmd === "paragraph") {
+        const list = parasRef.current, now = a ? a.currentTime : t;
+        let i = -1;
+        for (let j = 0; j < list.length; j++) { if (list[j].start <= now + 0.25) i = j; else break; }
+        const target = list[Math.max(0, Math.min(list.length - 1, i + arg))];
+        if (a && target) a.currentTime = target.start;
+        return target ? `Paragraph at ${clock(target.start)}` : "";
+      }
+      if (cmd === "notes") { setShowNotes(arg); return arg ? "Your notes" : "Notes closed"; }
+      if (cmd === "lastNote" || cmd === "deleteNote") {
+        const n = notesRef.current.find((x) => x.id === activeNote.current) || notesRef.current[notesRef.current.length - 1];
+        if (!n) return "There are no notes yet.";
+        if (cmd === "deleteNote") { deleteNote(n.id); activeNote.current = null; return `Deleted the note at ${clock(n.time)}`; }
+        if (a) a.currentTime = n.time;
+        setShowNotes(true);
+        return `Note at ${clock(n.time)}`;
+      }
+      if (cmd === "ask") {
+        const r = await api("/api/assistant/ask", { method: "POST", body: { transcription_id: id, question: arg } });
+        return r.answer;
+      }
+    },
+  });
+
   // ---------- export ----------
   async function download() {
     await flush();
@@ -362,6 +438,7 @@ function Editor() {
           <button className={"tbtn" + (showFind ? " on" : "")} onClick={() => setShowFind(!showFind)}>Find</button>
           <button className="tbtn" onClick={nextCheck} disabled={!lows}>Next check ({lows})</button>
           <button className={"tbtn" + (onlyCheck ? " on" : "")} onClick={() => setOnlyCheck(!onlyCheck)} disabled={!lows && !onlyCheck}>Only uncertain</button>
+          <button className={"tbtn" + (showNotes ? " on" : "")} onClick={() => setShowNotes(!showNotes)}>Notes ({notes.length})</button>
           <button className={"tbtn" + (showExport ? " on" : "")} onClick={() => setShowExport(!showExport)}>Export</button>
           <select className="theme-sel" aria-label="Theme" value={theme} onChange={(e) => { setTheme(e.target.value); applyTheme(e.target.value); }}>
             {THEMES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -394,6 +471,23 @@ function Editor() {
         </div></div>
       )}
 
+      {showNotes && (
+        <div className="panel"><div className="card">
+          <button className="tbtn" onClick={() => addNote()}>+ Note at {clock(t)}</button>
+          <span className="muted sm">Or tap the mic and say “take a note …”</span>
+          {notes.map((n) => (
+            <div key={n.id} className="snote">
+              <button className="ts" onClick={() => seek(n.time)} aria-label={`Play from ${clock(n.time)}`} disabled={!audioUrl}>{clock(n.time)}</button>
+              <div className="pbody">
+                <Area value={n.body} label={`Note at ${clock(n.time)}`} setRef={() => {}} onChange={(e) => editNote(n.id, e.target.value)} />
+                {voice.live && n.id === activeNote.current && <div className="live" aria-live="polite">{voice.live}…</div>}
+              </div>
+              <button className="px" aria-label={`Delete note at ${clock(n.time)}`} onClick={() => deleteNote(n.id)}>×</button>
+            </div>
+          ))}
+        </div></div>
+      )}
+
       <div className="doc">
         {shown.length === 0 && <p className="muted">{onlyCheck ? "Nothing is marked uncertain." : "This transcript is empty."}</p>}
         {shown.map(([p, i]) => (
@@ -416,6 +510,10 @@ function Editor() {
 
       <div className="eplayer">
         <div className="in">
+          <button className={"orb " + voice.state} aria-label="Voice command (Ctrl+Space)" title="Voice command (Ctrl+Space)" onClick={voice.toggle}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 3a3 3 0 013 3v5a3 3 0 01-6 0V6a3 3 0 013-3zM5 11a7 7 0 0014 0M12 18v3" /></svg>
+          </button>
+          {voice.caption && <div className="vcap" role="status" aria-live="polite">{voice.caption}</div>}
           {audioUrl ? (
             <>
               <audio ref={audioRef} src={audioUrl} preload="metadata"
@@ -438,8 +536,9 @@ function Editor() {
                 </select>
                 <label className="check" style={{ alignItems: "center" }}><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /><span>Follow along</span></label>
                 <label className="check" style={{ alignItems: "center" }}><input type="checkbox" checked={rewind} onChange={(e) => setRewind(e.target.checked)} /><span>Rewind 2s on play</span></label>
+                <label className="check" style={{ alignItems: "center" }} title="Say “Hey Nasoma”, then a command"><input type="checkbox" checked={voice.handsFree} onChange={(e) => voice.setHandsFree(e.target.checked)} /><span>Hands-free (“Hey Nasoma”)</span></label>
               </div>
-              <div className="hint">Esc play or pause · Alt + arrows: skip and speed · Enter splits a paragraph · Backspace at the start joins it to the one above</div>
+              <div className="hint">Esc play or pause · Ctrl+Space voice command · Alt + arrows: skip and speed · Enter splits a paragraph · Backspace at the start joins it to the one above</div>
             </>
           ) : (
             <div className="pctl">
