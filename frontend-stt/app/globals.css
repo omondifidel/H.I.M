@@ -1,7 +1,9 @@
-/* ---------- Theme tokens: dark is the default, light follows the device or the Settings choice ---------- */
-:root{--bg:#0E1018;--surface:#171A26;--surface2:#1E2335;--line:#262B3D;--line2:#2A3047;--text:#F4F5F8;--muted:#9AA1B5;--accent:#FFB547;--accent-text:#FFB547;--on-accent:#0E1018;--hl:rgba(255,181,71,.14);--hl2:rgba(255,181,71,.38);--good:#4FD1A5;--goodbg:#12261F;--danger:#FF8F7A;--overlay:rgba(5,6,10,.6);--track:#3A4160;--shadow:0 6px 20px rgba(0,0,0,.5);--deco:rgba(14,16,24,.85);color-scheme:dark}
-:root[data-theme="light"]{--bg:#F5F6FA;--surface:#FFFFFF;--surface2:#EEF0F6;--line:#E1E4EE;--line2:#D3D8E6;--text:#12141C;--muted:#5A6176;--accent:#FFB547;--accent-text:#9A5B00;--on-accent:#14110A;--hl:rgba(255,181,71,.22);--hl2:rgba(255,181,71,.55);--good:#0B7A5A;--goodbg:#DDF3EA;--danger:#C2410C;--overlay:rgba(18,20,28,.45);--track:#C9CEDD;--shadow:0 6px 20px rgba(18,20,28,.18);color-scheme:light}
-@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#F5F6FA;--surface:#FFFFFF;--surface2:#EEF0F6;--line:#E1E4EE;--line2:#D3D8E6;--text:#12141C;--muted:#5A6176;--accent:#FFB547;--accent-text:#9A5B00;--on-accent:#14110A;--hl:rgba(255,181,71,.22);--hl2:rgba(255,181,71,.55);--good:#0B7A5A;--goodbg:#DDF3EA;--danger:#C2410C;--overlay:rgba(18,20,28,.45);--track:#C9CEDD;--shadow:0 6px 20px rgba(18,20,28,.18);color-scheme:light}}
+/* ---------- Shared HIM Ministries white, blue-white, mint-lavender & dark themes ---------- */
+:root{--bg:#FFFFFF;--surface:#FFFFFF;--surface2:#F6F7F9;--line:#E5E8EC;--line2:#D1D6DD;--text:#1D232A;--muted:#6C7682;--accent:#2F7A53;--accent-text:#236141;--on-accent:#FFFFFF;--hl:rgba(47,122,83,.11);--hl2:rgba(47,122,83,.32);--good:#2F7A53;--goodbg:#E6F3EC;--danger:#B64E3D;--overlay:rgba(29,35,42,.45);--track:#DFE4EA;--shadow:0 10px 28px rgba(24,32,42,.06);--deco:rgba(29,35,42,.84);--lavender:#F1ECF8;--lavender-text:#654B8A;color-scheme:only light}
+:root[data-theme="light"]{--bg:#FFFFFF;--surface:#FFFFFF;--surface2:#F6F7F9;--text:#1D232A;color-scheme:only light}
+:root[data-theme="bluewhite"]{--bg:#F3F8FD;--surface:#FFFFFF;--surface2:#EAF2FA;--line:#DCE7F2;--line2:#C8D9E9;--text:#1F2D3D;--muted:#71849A;--accent:#4A8BC8;--accent-text:#356FAF;--on-accent:#FFFFFF;--hl:rgba(74,139,200,.13);--hl2:rgba(74,139,200,.4);--good:#3D896D;--goodbg:#E2F2EC;--danger:#B64E57;--overlay:rgba(26,46,68,.45);--track:#D5E2EE;--shadow:0 12px 32px rgba(33,71,109,.09);--deco:rgba(31,45,61,.82);--lavender:#DCEBFA;--lavender-text:#3B6090;color-scheme:only light}
+:root[data-theme="greenpurple"]{--bg:#F3F7F2;--surface:#FCFBFD;--surface2:#E9F0E7;--line:#DBE6DA;--line2:#C5D6C6;--text:#2B342D;--muted:#758078;--accent:#715398;--accent-text:#5D417F;--on-accent:#FFFFFF;--hl:rgba(113,83,152,.13);--hl2:rgba(113,83,152,.4);--good:#4C8B61;--goodbg:#E5F0E6;--danger:#A64F50;--overlay:rgba(30,40,33,.46);--track:#D4E0D3;--shadow:0 12px 32px rgba(43,58,46,.09);--deco:rgba(43,52,45,.82);--lavender:#EAE1F3;--lavender-text:#684C8A;color-scheme:only light}
+:root[data-theme="dark"]{--bg:#17151A;--surface:#211F26;--surface2:#2B2832;--line:#38343E;--line2:#49434F;--text:#F5F0E8;--muted:#B1A8B0;--accent:#8CC59B;--accent-text:#A7D6B2;--on-accent:#17151A;--hl:rgba(140,197,155,.15);--hl2:rgba(140,197,155,.42);--good:#7FCEA0;--goodbg:#25362D;--danger:#F09A88;--overlay:rgba(10,9,12,.72);--track:#4A444F;--shadow:0 12px 32px rgba(0,0,0,.32);--deco:rgba(23,21,26,.86);--lavender:#393244;--lavender-text:#D0BDEB;color-scheme:dark}
 
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -95,3 +97,39 @@ select.input{appearance:auto}
 .pctl select{height:40px;border-radius:12px;border:1px solid var(--line2);background:var(--surface2);padding:0 8px}
 .hint{font-size:12px;color:var(--muted);text-align:center}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+/* ---------- Theme Select, Scripture Pills & Sermon Quick Tags ---------- */
+.theme-sel{height:38px;padding:0 11px;border-radius:12px;border:1px solid var(--line2);background:var(--surface);color:var(--text);font-size:12px;font-weight:600;cursor:pointer}
+.meta-pill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;background:var(--surface2);border:1px solid var(--line);font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
+.verse-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:2px}
+.verse-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;background:var(--lavender);color:var(--lavender-text);font-size:11px;font-weight:700;letter-spacing:.2px}
+.p-tags{display:flex;gap:5px;flex-wrap:wrap;opacity:0;transition:opacity .15s}
+.para:hover .p-tags,.para:focus-within .p-tags{opacity:1}
+.ptag{height:24px;padding:0 8px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--muted);font-size:11px;font-weight:600}
+.ptag:hover{border-color:var(--accent);color:var(--accent-text)}
+@media(max-width:720px){
+  .para{grid-template-columns:54px 1fr 28px;gap:6px;padding:8px 4px}
+  .p-tags{opacity:1}
+  .eplayer{padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+  .hint{display:none}
+}
+
+
+/* ---------- Two-Column Transcribe Layout (Left History Sidebar + Right Upload Studio) ---------- */
+.wrap.wide{max-width:1280px}
+.stt-split{display:grid;grid-template-columns:360px 1fr;gap:24px;align-items:start}
+.stt-side{position:sticky;top:20px;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px;max-height:calc(100vh - 40px);display:flex;flex-direction:column;gap:12px}
+.stt-side-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.stt-count{padding:2px 9px;border-radius:999px;background:var(--surface2);border:1px solid var(--line2);font-size:11px;font-weight:700;color:var(--text)}
+.stt-search{height:38px;border-radius:11px;border:1px solid var(--line2);background:var(--surface2);padding:0 12px;font-size:13px;width:100%}
+.stt-side .jobs{margin-top:0;overflow-y:auto;padding-right:2px;max-height:calc(100vh - 170px)}
+.stt-side .job{padding:13px;border-radius:15px;background:var(--surface2);border-color:var(--line)}
+.stt-side .jh b{font-size:14px}
+.stt-side .acts .btn,.stt-side .acts label.btn{height:32px;padding:0 11px;font-size:12px;border-radius:10px}
+.stt-main{min-width:0}
+@media(max-width:920px){
+  .stt-split{grid-template-columns:1fr}
+  .stt-side{position:static;max-height:none}
+  .stt-side .jobs{max-height:none}
+}
