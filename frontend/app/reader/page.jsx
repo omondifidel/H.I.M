@@ -363,58 +363,11 @@ function Reader() {
     if (ps) setParas(ps);
   }
 
-  // ---- speech (4 Human Neural Voices — gapless silence-trimmed Web Audio + instant prefetch) ----
+  // ---- speech (4 Human Neural Voices — crisp native Audio + instant prefetch) ----
   const neuralCacheRef = useRef(new Map());
-  const decodedCacheRef = useRef(new Map());
   const neuralPendingRef = useRef(new Map());
-  const audioCtxRef = useRef(null);
-  const bufferSourceRef = useRef(null);
-
-  function getAudioCtx() {
-    if (typeof window === "undefined") return null;
-    if (!audioCtxRef.current) {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (Ctx) audioCtxRef.current = new Ctx();
-    }
-    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-      audioCtxRef.current.resume().catch(() => {});
-    }
-    return audioCtxRef.current;
-  }
-
-  function trimSilence(ctx, buf) {
-    try {
-      const sr = buf.sampleRate;
-      const ch = buf.getChannelData(0);
-      const thresh = 0.004;
-      let start = 0;
-      let end = ch.length - 1;
-      while (start < end && Math.abs(ch[start]) < thresh) start++;
-      while (end > start && Math.abs(ch[end]) < thresh) end--;
-      // Leave tiny 18ms natural breath at edges so words never clip
-      start = Math.max(0, start - Math.floor(sr * 0.018));
-      end = Math.min(ch.length - 1, end + Math.floor(sr * 0.025));
-      const len = end - start + 1;
-      if (len <= Math.floor(sr * 0.08) || len >= ch.length - Math.floor(sr * 0.04)) return buf;
-      const trimmed = ctx.createBuffer(buf.numberOfChannels, len, sr);
-      for (let c = 0; c < buf.numberOfChannels; c++) {
-        trimmed.copyToChannel(buf.getChannelData(c).subarray(start, end + 1), c);
-      }
-      return trimmed;
-    } catch {
-      return buf;
-    }
-  }
 
   function stopAudio() {
-    if (bufferSourceRef.current) {
-      try {
-        bufferSourceRef.current.onended = null;
-        bufferSourceRef.current.stop(0);
-        bufferSourceRef.current.disconnect();
-      } catch {}
-      bufferSourceRef.current = null;
-    }
     if (audioRef.current) {
       try {
         audioRef.current.onended = null;
@@ -452,17 +405,8 @@ function Reader() {
         if (neuralCacheRef.current.size > 50) {
           const oldest = neuralCacheRef.current.keys().next().value;
           neuralCacheRef.current.delete(oldest);
-          decodedCacheRef.current.delete(oldest);
         }
         neuralCacheRef.current.set(key, blob);
-        // Pre-decode & trim silence immediately in background for 0ms paragraph switch
-        const ctx = getAudioCtx();
-        if (ctx && !decodedCacheRef.current.has(key)) {
-          blob.arrayBuffer()
-            .then((ab) => ctx.decodeAudioData(ab))
-            .then((raw) => decodedCacheRef.current.set(key, trimSilence(ctx, raw)))
-            .catch(() => {});
-        }
         return blob;
       })
       .finally(() => {
@@ -471,21 +415,6 @@ function Reader() {
 
     neuralPendingRef.current.set(key, req);
     return req;
-  }
-
-  async function getDecodedBuffer(text, voiceKey) {
-    const vKey = voiceKey || "ann";
-    const key = `${vKey}:${text}`;
-    if (decodedCacheRef.current.has(key)) return decodedCacheRef.current.get(key);
-    const blob = await fetchNeuralBlob(text, vKey);
-    const ctx = getAudioCtx();
-    if (!ctx) return null;
-    if (decodedCacheRef.current.has(key)) return decodedCacheRef.current.get(key);
-    const ab = await blob.arrayBuffer();
-    const raw = await ctx.decodeAudioData(ab);
-    const trimmed = trimSilence(ctx, raw);
-    decodedCacheRef.current.set(key, trimmed);
-    return trimmed;
   }
 
   async function prefetchAhead(p, i, chunkNo, ps, vKey) {
@@ -549,22 +478,6 @@ function Reader() {
     };
 
     try {
-      const ctx = getAudioCtx();
-      if (ctx) {
-        const buf = await getDecodedBuffer(text, vKey);
-        if (myRun !== run.current) return;
-        if (buf) {
-          if (ctx.state === "suspended") await ctx.resume();
-          const src = ctx.createBufferSource();
-          src.buffer = buf;
-          src.playbackRate.value = rateRef.current;
-          src.connect(ctx.destination);
-          src.onended = advance;
-          bufferSourceRef.current = src;
-          src.start(0);
-          return;
-        }
-      }
       const blob = await fetchNeuralBlob(text, vKey);
       if (myRun !== run.current) return;
       const url = URL.createObjectURL(blob);
@@ -641,9 +554,7 @@ function Reader() {
     rateRef.current = r;
     setRate(r);
     localStorage.setItem("tts:rate", String(r));
-    if (bufferSourceRef.current) {
-      bufferSourceRef.current.playbackRate.value = r;
-    } else if (audioRef.current) {
+    if (audioRef.current) {
       audioRef.current.playbackRate = r;
     } else if (playingRef.current) {
       play(pos.current.page, pos.current.idx, pos.current.chunk);
