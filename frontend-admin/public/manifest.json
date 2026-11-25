@@ -1,0 +1,15 @@
+{
+  "name": "HIM Ministries \u00b7 Admin",
+  "short_name": "HIM Admin",
+  "start_url": "/admin/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1D4ED8",
+  "icons": [
+    {
+      "src": "/admin/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
