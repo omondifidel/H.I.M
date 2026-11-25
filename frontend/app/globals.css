@@ -836,3 +836,103 @@ body:has(.library-shell){background:var(--bg)}
   border-radius: 2px 2px 0 0;
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
 }
+
+
+/* ---------- Topbar Theme Switcher & Notification Center ---------- */
+.header-tools{display:flex;align-items:center;gap:10px}
+.topbar-theme{height:36px;padding:0 11px;border:1px solid var(--line2);border-radius:11px;background:var(--surface);color:var(--text);font-size:12px;font-weight:600;cursor:pointer}
+.notif-wrap{position:relative}
+.notif-btn{position:relative;width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:11px;background:var(--surface);color:var(--text);cursor:pointer;transition:background .15s}
+.notif-btn:hover{background:var(--surface2)}
+.notif-badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:800;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.18)}
+.notif-pop{position:absolute;top:44px;right:0;width:min(360px,calc(100vw - 28px));background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:0 18px 46px rgba(15,23,42,.18);z-index:40;overflow:hidden;display:flex;flex-direction:column}
+.notif-head{display:flex;align-items:center;justify-content:space-between;padding:13px 15px 10px;border-bottom:1px solid var(--line)}
+.notif-head b{font-size:14px}
+.notif-clear{border:0;background:none;color:var(--accent-text);font-size:12px;font-weight:600;cursor:pointer}
+.notif-filters{display:flex;gap:4px;padding:8px 10px;border-bottom:1px solid var(--line);overflow-x:auto}
+.notif-filters button{border:0;background:var(--surface2);color:var(--muted);font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;white-space:nowrap;cursor:pointer}
+.notif-filters button.on{background:var(--accent);color:var(--on-accent)}
+.notif-list{max-height:340px;overflow-y:auto;display:flex;flex-direction:column}
+.notif-item{text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;padding:12px 15px;display:grid;gap:4px;cursor:pointer;transition:background .15s;color:var(--text)}
+.notif-item:last-child{border-bottom:0}
+.notif-item:hover{background:var(--surface2)}
+.notif-item.unread{background:var(--hl)}
+.notif-item-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.notif-item b{font-size:13px;line-height:1.35}
+.notif-item p{margin:0;font-size:12px;color:var(--muted);line-height:1.45}
+.notif-kind{font-size:10px;font-weight:800;letter-spacing:.4px;padding:2px 7px;border-radius:999px;text-transform:uppercase}
+.notif-kind.k-ann{background:var(--lavender);color:var(--lavender-text)}
+.notif-kind.k-book{background:var(--goodbg);color:var(--good)}
+.notif-kind.k-sys{background:rgba(239,68,68,.14);color:#dc2626}
+.notif-kind.k-rem{background:var(--hl);color:var(--accent-text)}
+
+/* ---------- Reader Left Page Thumbnail Rail & Right Resizable Sound Tray ---------- */
+.reader-stage{display:flex;align-items:flex-start;max-width:1440px;margin:0 auto}
+.reader-rail{position:sticky;top:56px;width:154px;flex:none;height:calc(100vh - 56px);border-right:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;z-index:4}
+.rail-head{padding:11px 12px 9px;font-size:10px;font-weight:800;letter-spacing:1.2px;color:var(--muted);border-bottom:1px solid var(--line)}
+.rail-scroll{flex:1;overflow-y:auto;padding:10px 10px 40px;display:flex;flex-direction:column;gap:10px}
+.thumb-card{border:2px solid transparent;border-radius:11px;background:var(--surface2);padding:6px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;transition:border-color .15s,transform .15s,background .15s}
+.thumb-card:hover{border-color:var(--line2);transform:translateY(-1px)}
+.thumb-card.on{border-color:var(--accent);background:var(--hl)}
+.thumb-frame{width:100%;aspect-ratio:3/4;border-radius:7px;overflow:hidden;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center}
+.thumb-frame canvas{width:100%;height:100%;object-fit:cover;display:block}
+.thumb-skel{font-size:12px;font-weight:700;color:var(--muted)}
+.thumb-num{font-size:11px;font-weight:600;color:var(--text)}
+.reader-stage .rtext{flex:1;min-width:0;padding-bottom:140px!important}
+
+@media(min-width:900px){
+  .reader-shell .player.right-tray{
+    left:auto;right:20px;bottom:20px;transform:none;
+    width:var(--tray-w,340px);min-height:0;
+    border-radius:20px;padding:12px 16px 14px;
+    box-shadow:0 14px 38px rgba(15,23,42,.14);
+  }
+  .reader-shell .player.right-tray.compact{width:250px;padding:10px 14px}
+  .reader-shell .fab2{right:24px;bottom:246px}
+}
+.tray-resizer{position:absolute;left:0;top:14px;bottom:14px;width:7px;cursor:ew-resize;border-radius:4px}
+.tray-resizer:hover{background:var(--accent);opacity:.35}
+.tray-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.tray-min{border:1px solid var(--line2);background:var(--surface2);color:var(--text);font-size:11px;font-weight:600;padding:2px 8px;border-radius:8px;cursor:pointer}
+.reader-shell .player.right-tray .wave{height:24px;margin-top:4px}
+.reader-shell .player.right-tray .ctrl{gap:18px;margin-top:6px}
+.reader-shell .player.right-tray .play{width:50px;height:50px}
+.reader-shell .player.right-tray .pills{margin-top:8px;gap:6px}
+.reader-shell .player.right-tray .pill{height:30px;padding:0 10px;font-size:11px}
+
+@media(max-width:899px){
+  .reader-rail{width:86px}
+  .thumb-card{padding:4px}
+  .thumb-num{font-size:10px}
+  .tray-resizer{display:none}
+}
+
+
+/* ---------- Topbar Right Alignment, Horizontal Page Nav & Docked Notes ---------- */
+.library-header{justify-content:space-between;width:100%}
+.library-header .header-tools{margin-left:auto}
+.reader-shell>.top{display:flex;align-items:center;gap:10px}
+.reader-shell>.top .t{flex:1;min-width:0}
+.back-lib-btn{border:1px solid var(--line2);border-radius:11px;background:var(--surface)}
+.reader-right-tools{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.page-nav-pill{display:inline-flex;align-items:center;height:36px;border:1px solid var(--line2);border-radius:11px;background:var(--surface);overflow:hidden}
+.pnav-btn{width:32px;height:34px;border:0;background:transparent;color:var(--text);display:grid;place-items:center;cursor:pointer;transition:background .15s}
+.pnav-btn:hover{background:var(--surface2)}
+.page-nav-pill .pg{width:44px;height:34px;border:0;border-left:1px solid var(--line);border-right:1px solid var(--line);border-radius:0;background:transparent;text-align:center;font-weight:700;font-size:13px;padding:0 2px}
+
+@media(min-width:900px){
+  .sheet.notes-docked{
+    left:auto;right:20px;bottom:254px;
+    width:min(380px,calc(100vw - 40px));
+    height:auto;max-height:calc(100vh - 330px);
+    border:1px solid var(--line);border-radius:20px;
+    padding:12px 16px 14px;
+    box-shadow:0 16px 42px rgba(15,23,42,.16);
+    z-index:7;
+  }
+  .sheet.notes-docked.tray-min-mode{bottom:142px;max-height:calc(100vh - 218px)}
+  .sheet.notes-docked .grab{display:none}
+  .sheet.notes-docked .sh{font-size:17px}
+  .sheet.notes-docked .noteArea{height:92px;font-size:14px;padding:10px 12px}
+  .sheet.notes-docked .tool{height:32px;padding:0 10px;font-size:12px}
+}

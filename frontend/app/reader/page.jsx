@@ -7,6 +7,7 @@ import { idbGet, idbPut } from "../../lib/db";
 import { listNotes, newNoteId, putNote, removeNote, syncNotes } from "../../lib/notes";
 import { extractParagraphs, loadPdfjs } from "../../lib/pdfText";
 import { applyTheme, getTheme, THEMES } from "../../lib/theme";
+import NotificationBell from "../../components/NotificationBell";
 
 /** Split a paragraph into short chunks so browsers never cut long speech off. */
 function splitChunks(text, max = 220) {
@@ -102,6 +103,68 @@ function PdfPageView({ pdf, pageNumber }) {
   );
 }
 
+
+function PageThumb({ pdf, pageNumber, active, onSelect }) {
+  const boxRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [rendered, setRendered] = useState(false);
+
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || !pdf || rendered) return;
+    let cancelled = false;
+    const obs = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      obs.disconnect();
+      (async () => {
+        try {
+          const p = await pdf.getPage(pageNumber);
+          if (cancelled || !canvasRef.current) return;
+          const base = p.getViewport({ scale: 1 });
+          const viewport = p.getViewport({ scale: 112 / base.width });
+          const canvas = canvasRef.current;
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          await p.render({ canvasContext: canvas.getContext("2d", { alpha: false }), viewport }).promise;
+          if (!cancelled) setRendered(true);
+        } catch {}
+      })();
+    }, { rootMargin: "240px 0px" });
+    obs.observe(el);
+    return () => { cancelled = true; obs.disconnect(); };
+  }, [pdf, pageNumber, rendered]);
+
+  return (
+    <button
+      ref={boxRef}
+      type="button"
+      className={"thumb-card" + (active ? " on" : "")}
+      aria-current={active ? "page" : undefined}
+      onClick={() => onSelect(pageNumber)}
+    >
+      <div className="thumb-frame">
+        <canvas ref={canvasRef} aria-hidden="true" />
+        {!rendered && <span className="thumb-skel">{pageNumber}</span>}
+      </div>
+      <span className="thumb-num">Page {pageNumber}</span>
+    </button>
+  );
+}
+
+function PageRail({ pdf, numPages, currentPage, onSelect }) {
+  if (!numPages) return null;
+  return (
+    <aside className="reader-rail" aria-label="Book pages">
+      <div className="rail-head">PAGES ({numPages})</div>
+      <div className="rail-scroll">
+        {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => (
+          <PageThumb key={n} pdf={pdf} pageNumber={n} active={n === currentPage} onSelect={onSelect} />
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 function Reader() {
   const sp = useSearchParams();
   const id = sp.get("id");
@@ -115,6 +178,26 @@ function Reader() {
   const [chunk, setChunk] = useState(0);
   const [pageInput, setPageInput] = useState("1");
   const [seekPage, setSeekPage] = useState(1);
+  const [trayWidth, setTrayWidth] = useState(340);
+  const [trayCompact, setTrayCompact] = useState(false);
+  const dragRef = useRef(null);
+
+  function startTrayResize(e) {
+    e.preventDefault();
+    const startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    const startW = trayWidth;
+    const onMove = (ev) => {
+      const cx = ev.clientX ?? ev.touches?.[0]?.clientX ?? startX;
+      const next = Math.max(280, Math.min(560, startW + (startX - cx)));
+      setTrayWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
   const [paras, setParas] = useState([]);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
@@ -593,24 +676,37 @@ function Reader() {
   return (
     <main className="reader-shell">
       <div className="top">
-        <Link href="/" className="ib" aria-label="Back to library"><Icon d={P.down} /></Link>
+        <Link href="/" className="ib back-lib-btn" aria-label="Back to library" title="Back to library">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </Link>
         <div className="t">
           <b>{title || "Loading..."}</b>
           <span className="muted sm">Page {page} of {numPages || "..."}</span>
         </div>
-        <button className="ib" style={{ width: 36 }} aria-label="Previous page with text" onClick={() => goPage(page - 1, -1)}><Icon size={20} d={P.up} /></button>
-        <input
-          className="pg" type="number" min="1" max={numPages || 1} value={pageInput} aria-label="Go to page"
-          onChange={(e) => setPageInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") goPage(pageInput); }}
-        />
-        <button className="ib" style={{ width: 36 }} aria-label="Next page with text" onClick={() => goPage(page + 1, 1)}><Icon size={20} d={P.down} /></button>
-        <select className="reader-theme" value={theme} onChange={(e) => chooseTheme(e.target.value)} aria-label="Appearance theme">
-          {THEMES.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-        </select>
+        <div className="reader-right-tools">
+          <div className="page-nav-pill" role="group" aria-label="Page navigation">
+            <button type="button" className="pnav-btn" aria-label="Previous page" title="Previous page" onClick={() => goPage(page - 1, -1)}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <input
+              className="pg" type="number" min="1" max={numPages || 1} value={pageInput} aria-label="Go to page"
+              onChange={(e) => setPageInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") goPage(pageInput); }}
+            />
+            <button type="button" className="pnav-btn" aria-label="Next page" title="Next page" onClick={() => goPage(page + 1, 1)}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+          <NotificationBell />
+          <select className="reader-theme" value={theme} onChange={(e) => chooseTheme(e.target.value)} aria-label="Appearance theme">
+            {THEMES.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+          </select>
+        </div>
       </div>
 
-      <div className={"rtext" + (panel === "notes" ? " pad" : "")}>
+      <div className="reader-stage">
+        {status === "ready" && <PageRail pdf={pdfRef.current} numPages={numPages} currentPage={page} onSelect={(p) => goPage(p)} />}
+        <main className={"rtext" + (panel === "notes" ? " pad" : "")}>
         {status === "loading" && <p className="muted">Opening your PDF...</p>}
         {error && <p className="err" role="alert">{error}</p>}
         {status === "ready" && pdfRef.current && <PdfPageView pdf={pdfRef.current} pageNumber={page} />}
@@ -625,44 +721,57 @@ function Reader() {
               : t}
           </button>
         ))}
+        </main>
       </div>
 
       {!panel && status === "ready" && (
         <button className="fab2" aria-label="Open notes" onClick={openNotes}><Icon d={P.pencil} /></button>
       )}
 
-      <div className="player">
+      <div className={"player right-tray" + (trayCompact ? " compact" : "")} style={{ "--tray-w": `${trayWidth}px` }}>
+        <div className="tray-resizer" role="separator" aria-orientation="vertical" aria-label="Resize audio player" onPointerDown={startTrayResize} title="Drag to resize sound tray" />
         <div className="in">
-          <div className="row between muted sm"><span>Paragraph {paras.length ? idx + 1 : 0} of {paras.length}</span><span>Page {page}</span></div>
-          <label className="page-seek">
-            <span>Page <b>{seekPage}</b><span className="muted"> / {numPages || "..."}</span></span>
-            <input type="range" min="1" max={numPages || 1} value={Math.min(seekPage, numPages || 1)} aria-label="Jump to page"
-              onChange={(e) => setSeekPage(Number(e.target.value))}
-              onPointerUp={(e) => goPage(Number(e.currentTarget.value))}
-              onKeyUp={(e) => goPage(Number(e.currentTarget.value))} />
-          </label>
-          <div className="wave" role="img" aria-label={`Progress on this page, ${pct} percent`}>
-            {BARS.map((h, i) => <i key={i} className={(i / BARS.length) * 100 < pct ? "on" : ""} style={{ height: h * 2 }} />)}
-          </div>
-          <div className="ctrl">
-            <button className="ib" style={{ width: 52, height: 52 }} aria-label="Previous paragraph" onClick={() => move(-1)}><Icon size={28} d={P.prev} /></button>
-            <button className="play" aria-label={playing ? "Pause" : "Play"} onClick={toggle} disabled={status !== "ready"}>
-              <Icon size={30} fill d={playing ? P.pause : P.play} />
+          <div className="tray-head">
+            <span className="muted sm">P{paras.length ? idx + 1 : 0}/{paras.length} · Pg {page}/{numPages || "..."}</span>
+            <button type="button" className="tray-min" onClick={() => setTrayCompact((c) => !c)} aria-label={trayCompact ? "Expand audio tray" : "Minimize audio tray"}>
+              {trayCompact ? "Expand" : "Minimize"}
             </button>
-            <button className="ib" style={{ width: 52, height: 52 }} aria-label="Next paragraph" onClick={() => move(1)}><Icon size={28} d={P.next} /></button>
           </div>
-          <div className="pills">
-            <button className="pill" onClick={() => setPanel("voice")}><Icon size={16} d={P.speed} />{rate}x</button>
-            <button className="pill" onClick={() => setPanel("voice")}><Icon size={16} d={P.mic} />{currentVoice ? voiceName(currentVoice) : "Voice"}</button>
-            <button className="pill" onClick={() => setPanel("voice")}><Icon size={16} d={P.moon} />{sleepMin ? `${sleepMin} min` : "Sleep"}</button>
+          {!trayCompact && (
+            <>
+              <label className="page-seek">
+                <span>Pg <b>{seekPage}</b></span>
+                <input type="range" min="1" max={numPages || 1} value={Math.min(seekPage, numPages || 1)} aria-label="Jump to page"
+                  onChange={(e) => setSeekPage(Number(e.target.value))}
+                  onPointerUp={(e) => goPage(Number(e.currentTarget.value))}
+                  onKeyUp={(e) => goPage(Number(e.currentTarget.value))} />
+              </label>
+              <div className="wave" role="img" aria-label={`Progress on this page, ${pct} percent`}>
+                {BARS.slice(0, 28).map((h, i) => <i key={i} className={(i / 28) * 100 < pct ? "on" : ""} style={{ height: Math.max(8, Math.round(h * 1.3)) }} />)}
+              </div>
+            </>
+          )}
+          <div className="ctrl">
+            <button className="ib" style={{ width: 40, height: 40 }} aria-label="Previous paragraph" onClick={() => move(-1)}><Icon size={21} d={P.prev} /></button>
+            <button className="play" aria-label={playing ? "Pause" : "Play"} onClick={toggle} disabled={status !== "ready"}>
+              <Icon size={24} fill d={playing ? P.pause : P.play} />
+            </button>
+            <button className="ib" style={{ width: 40, height: 40 }} aria-label="Next paragraph" onClick={() => move(1)}><Icon size={21} d={P.next} /></button>
           </div>
+          {!trayCompact && (
+            <div className="pills">
+              <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.speed} />{rate}x</button>
+              <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.mic} />{currentVoice ? voiceName(currentVoice) : "Voice"}</button>
+              <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.moon} />{sleepMin ? `${sleepMin}m` : "Sleep"}</button>
+            </div>
+          )}
         </div>
       </div>
 
-      {panel && <button className="scrim" aria-label="Close" onClick={closePanel} />}
+      {panel === "voice" && <button className="scrim" aria-label="Close" onClick={closePanel} />}
 
       {panel === "notes" && (
-        <div className="sheet" role="dialog" aria-label="Notes">
+        <div className={"sheet notes-docked" + (trayCompact ? " tray-min-mode" : "")} role="dialog" aria-label="Notes">
           <div className="grab" style={{ margin: "0 auto" }} />
           <div className="row between">
             <h2 className="sh">Notes</h2>
@@ -706,13 +815,7 @@ function Reader() {
               </div>
             ))}
           </div>
-          <div className="mini">
-            <button className="ib" aria-label="Previous paragraph" onClick={() => move(-1)}><Icon size={22} d={P.prev} /></button>
-            <button className="pp" aria-label={playing ? "Pause" : "Play"} onClick={toggle}><Icon size={20} fill d={playing ? P.pause : P.play} /></button>
-            <button className="ib" aria-label="Next paragraph" onClick={() => move(1)}><Icon size={22} d={P.next} /></button>
-            <div style={{ flex: 1, fontSize: 13 }}><b>{playing ? "Still reading" : "Paused"}</b><div className="muted sm">Paragraph {idx + 1} · {rate}x</div></div>
-          </div>
-        </div>
+                  </div>
       )}
 
       {panel === "voice" && (

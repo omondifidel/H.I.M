@@ -389,6 +389,103 @@ function Usage() {
   );
 }
 
+
+function NotificationsAdmin() {
+  const [items, setItems] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [kind, setKind] = useState("announcement");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [link, setLink] = useState("");
+  const [targetUser, setTargetUser] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    api("/api/admin/notifications").then(setItems).catch((e) => setError(e.message));
+  }, []);
+
+  useEffect(() => {
+    load();
+    api("/api/admin/users").then(setUsers).catch(() => {});
+  }, [load]);
+
+  async function send(e) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setBusy(true); setError(""); setMsg("");
+    try {
+      await api("/api/admin/notifications", {
+        method: "POST",
+        body: { kind, title: title.trim(), body: body.trim(), link: link.trim(), user_id: targetUser || null },
+      });
+      setTitle(""); setBody(""); setLink(""); setTargetUser("");
+      setMsg("Notification sent.");
+      load();
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function remove(id) {
+    try {
+      await api(`/api/admin/notifications/${id}`, { method: "DELETE" });
+      setItems((list) => list.filter((x) => x.id !== id));
+    } catch (e) { setError(e.message); }
+  }
+
+  const LABELS = { announcement: "Announcement", new_book: "New Book", system: "System Alert", reminder: "Reminder" };
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <form className="card" onSubmit={send} style={{ display: "grid", gap: 12 }}>
+        <b>Send a notification</b>
+        {error && <p className="err" role="alert">{error}</p>}
+        {msg && <p className="muted sm" style={{ color: "var(--accent-text)", fontWeight: 600 }}>{msg}</p>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+          <label style={{ display: "grid", gap: 5, fontSize: 13 }}>
+            <span>Category</span>
+            <select className="input" value={kind} onChange={(e) => setKind(e.target.value)}>
+              <option value="announcement">Announcement</option>
+              <option value="new_book">New Book</option>
+              <option value="system">System Alert</option>
+              <option value="reminder">Reminder</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 5, fontSize: 13 }}>
+            <span>Recipient</span>
+            <select className="input" value={targetUser} onChange={(e) => setTargetUser(e.target.value)}>
+              <option value="">All members (Broadcast)</option>
+              {users.map((u) => <option key={u.id} value={u.id}>{u.email}</option>)}
+            </select>
+          </label>
+        </div>
+        <input className="input" placeholder="Notification title (e.g. New Study Guide Added)" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <textarea className="input" rows={3} placeholder="Message details..." value={body} onChange={(e) => setBody(e.target.value)} style={{ height: "auto", padding: 12 }} />
+        <input className="input" placeholder="Optional link (e.g. / or /transcribe/)" value={link} onChange={(e) => setLink(e.target.value)} />
+        <button className="btn" disabled={busy || !title.trim()}>{busy ? "Sending..." : "Send Notification"}</button>
+      </form>
+      <div style={{ display: "grid", gap: 10 }}>
+        <b className="muted sm">RECENTLY SENT ({items.length})</b>
+        {items.length === 0 && <p className="muted sm">No notifications sent yet.</p>}
+        {items.map((n) => (
+          <div className="card row between" key={n.id} style={{ gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span className="pill" style={{ fontSize: 11 }}>{LABELS[n.kind] || n.kind}</span>
+                <b>{n.title}</b>
+                <span className="muted sm">{n.user_id ? "Direct" : "All members"} · {when(n.created_at)}</span>
+              </div>
+              {n.body && <p className="muted sm" style={{ marginTop: 4 }}>{n.body}</p>}
+            </div>
+            <button type="button" className="btn ghost" style={{ height: 36 }} onClick={() => remove(n.id)}>Delete</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [me, setMe] = useState(null);
   const [fatal, setFatal] = useState("");
@@ -420,9 +517,9 @@ export default function AdminPage() {
           <a className="btn ghost" style={{ height: 40 }} href="/">Library</a>
         </div>
       </div>
-      <h1 className="title">{{ overview: "Overview", people: "People and access", groups: "Groups", books: "Books and sharing", usage: "Usage", invites: "Add people" }[tab]}</h1>
+      <h1 className="title">{{ overview: "Overview", people: "People and access", groups: "Groups", books: "Books and sharing", usage: "Usage", invites: "Add people", notifications: "Notifications" }[tab]}</h1>
       <div className="tabs" role="tablist">
-        {[["overview", "Overview"], ["people", "People"], ["groups", "Groups"], ["books", "Books"], ["usage", "Usage"], ["invites", "Add people"]].map(([k, label]) => (
+        {[["overview", "Overview"], ["people", "People"], ["groups", "Groups"], ["books", "Books"], ["usage", "Usage"], ["invites", "Add people"], ["notifications", "Notifications"]].map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
@@ -432,6 +529,7 @@ export default function AdminPage() {
       {tab === "books" && <Books />}
       {tab === "usage" && <Usage />}
       {tab === "invites" && <Invites />}
+      {tab === "notifications" && <NotificationsAdmin />}
     </div>
   );
 }
