@@ -2,9 +2,30 @@ from typing import Optional
 
 from sqlalchemy import JSON, Computed, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql.expression import FunctionElement
 
 from app.core.database import Base
+
+_TSV_TYPE = TSVECTOR().with_variant(Text(), "sqlite")
+
+
+class _SimpleTsvector(FunctionElement):
+    type = _TSV_TYPE
+    inherit_cache = True
+
+
+@compiles(_SimpleTsvector, "postgresql")
+def _compile_tsv_pg(element, compiler, **kw):
+    arg = compiler.process(list(element.clauses)[0], **kw)
+    return f"to_tsvector('simple', coalesce(title, '') || ' ' || {arg})"
+
+
+@compiles(_SimpleTsvector, "sqlite")
+def _compile_tsv_sqlite(element, compiler, **kw):
+    arg = compiler.process(list(element.clauses)[0], **kw)
+    return f"coalesce(title, '') || ' ' || {arg}"
 
 
 class SearchChunk(Base):
@@ -22,6 +43,6 @@ class SearchChunk(Base):
     text: Mapped[str] = mapped_column(Text, default="")
     times: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # sermons: [[char offset, seconds], ...]
     # "simple" keeps every word as spoken: English stemming would mangle Kiswahili and mixed sermons
-    tsv = mapped_column(TSVECTOR, Computed("to_tsvector('simple', text)", persisted=True))
+    tsv = mapped_column(_TSV_TYPE, Computed(_SimpleTsvector(text), persisted=True))
 
     __table_args__ = (Index("ix_search_chunks_tsv", "tsv", postgresql_using="gin"),)
