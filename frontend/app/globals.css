@@ -941,4 +941,4 @@ body:has(.library-shell){background:var(--bg)}
 .pdf-hl-layer{position:absolute;inset:0;pointer-events:none}
 .pdf-line-hit{position:absolute;pointer-events:auto;border:0;background:transparent;cursor:pointer;border-radius:3px}
 .pdf-line-hit:hover{background:rgba(59,130,246,.08)}
-.pdf-line-hl{position:absolute;pointer-events:none;border-radius:4px;background:rgba(250,204,21,.34);box-shadow:0 1px 0 rgba(234,179,8,.45);transition:top .15s ease,left .15s ease,width .15s ease}
+.pdf-line-hl{position:absolute;pointer-events:none;border-radius:4px;background:rgba(59,130,246,.22);box-shadow:0 1px 0 rgba(37,99,235,.42);transition:top .15s ease,left .15s ease,width .15s ease}
