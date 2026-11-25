@@ -21,8 +21,6 @@ services:
         value: library       # apps given to people who join with the shared invite code
       - key: GROQ_API_KEY
         sync: false          # your free key from console.groq.com, set in the Render dashboard
-      - key: GEMINI_API_KEY
-        sync: false          # meaning search; free key from aistudio.google.com/apikey, set in the Render dashboard
       - key: TRANSCRIBE_ENGINE
         value: groq
       - key: GROQ_CHAT_MODEL
