@@ -4,6 +4,7 @@ import { api, getToken, setUser } from "../lib/api";
 import { cleanName, clock, fmtDate, fmtSize } from "../lib/format";
 import { deleteAudio, saveAudio } from "../lib/db";
 import { uploadRecording } from "../lib/upload";
+import { THEMES, applyTheme, getTheme } from "../lib/theme";
 
 const ACTIVE = ["uploading", "queued", "processing"];
 const LABEL = { uploading: "Upload not finished", queued: "In line", processing: "Transcribing", done: "Ready", failed: "Failed", cancelled: "Cancelled" };
@@ -117,6 +118,9 @@ export default function Home() {
   const [jobs, setJobs] = useState([]);
   const [msg, setMsg] = useState("");
   const [up, setUp] = useState(null); // { id, name, pct }
+  const [q, setQ] = useState("");
+  const [theme, setTheme] = useState("light");
+  useEffect(() => { const t = getTheme(); setTheme(t); applyTheme(t); }, []);
 
   const load = useCallback(async () => {
     try {
@@ -188,37 +192,76 @@ export default function Home() {
   if (fatal) return <div className="wrap"><p className="err" role="alert">{fatal}</p></div>;
   if (!me) return null;
 
+  const sortedJobs = [...jobs]
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    .filter((j) => !q.trim() || `${j.title} ${j.original_name}`.toLowerCase().includes(q.trim().toLowerCase()));
+
   return (
-    <div className="wrap">
+    <div className="wrap wide">
       <div className="top">
-        <div className="brand"><i>T</i>Transcribe</div>
+        <div className="brand">
+          <img src="/transcribe/favicon.svg" alt="" width={36} height={36} style={{ borderRadius: 10 }} />
+          <span>HIM Transcribe</span>
+        </div>
         <div className="acts">
+          <select
+            className="theme-sel"
+            aria-label="Theme"
+            value={theme}
+            onChange={(e) => { setTheme(e.target.value); applyTheme(e.target.value); }}
+          >
+            {THEMES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
           {me.apps.includes("library") && <a className="btn ghost" href="/">Library</a>}
           {me.role === "admin" && <a className="btn ghost" href="/admin/">Admin</a>}
         </div>
       </div>
-      <h1 className="title">Turn recordings into text</h1>
-      <p className="muted" style={{ margin: "6px 0 18px" }}>Upload a sermon, leave this page open, and review the draft when it is ready.</p>
 
-      {engine && !engine.configured && (
-        <div className="banner" role="alert">Transcription is not switched on yet. The server needs its speech service key (GROQ_API_KEY). Ask the admin.</div>
-      )}
-      {msg && <p className="err" role="alert">{msg}</p>}
+      <div className="stt-split">
+        <aside className="stt-side" aria-label="Your transcriptions">
+          <div className="stt-side-head">
+            <span className="lbl">YOUR TRANSCRIPTIONS</span>
+            <span className="stt-count">{jobs.length}</span>
+          </div>
+          {jobs.length > 0 && (
+            <input
+              className="stt-search"
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Filter past sermons..."
+              aria-label="Filter past transcriptions"
+            />
+          )}
+          <div className="jobs">
+            {sortedJobs.length === 0 && (
+              <div className="empty muted sm">
+                {jobs.length === 0 ? "Nothing here yet. Your first sermon will appear after you start it." : "No matching transcriptions."}
+              </div>
+            )}
+            {sortedJobs.map((j) => <Job key={j.id} job={j} onCancel={cancel} onRetry={retry} onDelete={remove} onResume={resume} />)}
+          </div>
+        </aside>
 
-      {up && (
-        <div className="card job" style={{ marginBottom: 12 }}>
-          <b>Uploading {up.name}</b>
-          <div className="bar" role="progressbar" aria-valuenow={up.pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: up.pct + "%" }} /></div>
-          <div className="muted sm">{up.pct}% · keep this page open until it reaches 100%</div>
-        </div>
-      )}
+        <main className="stt-main">
+          <h1 className="title">Turn recordings into text</h1>
+          <p className="muted" style={{ margin: "6px 0 18px" }}>Upload a sermon, leave this page open, and review the draft when it is ready.</p>
 
-      <NewForm engine={engine} onStarted={start} disabled={!!up || (engine && !engine.configured)} />
+          {engine && !engine.configured && (
+            <div className="banner" role="alert">Transcription is not switched on yet. The server needs its speech service key (GROQ_API_KEY). Ask the admin.</div>
+          )}
+          {msg && <p className="err" role="alert">{msg}</p>}
 
-      <div className="lbl" style={{ marginTop: 28 }}>YOUR TRANSCRIPTIONS</div>
-      <div className="jobs">
-        {jobs.length === 0 && <div className="card empty muted">Nothing here yet. Your first sermon will appear after you start it.</div>}
-        {jobs.map((j) => <Job key={j.id} job={j} onCancel={cancel} onRetry={retry} onDelete={remove} onResume={resume} />)}
+          {up && (
+            <div className="card job" style={{ marginBottom: 12 }}>
+              <b>Uploading {up.name}</b>
+              <div className="bar" role="progressbar" aria-valuenow={up.pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: up.pct + "%" }} /></div>
+              <div className="muted sm">{up.pct}% · keep this page open until it reaches 100%</div>
+            </div>
+          )}
+
+          <NewForm engine={engine} onStarted={start} disabled={!!up || (engine && !engine.configured)} />
+        </main>
       </div>
     </div>
   );

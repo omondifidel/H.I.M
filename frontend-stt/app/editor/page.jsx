@@ -4,10 +4,15 @@ import { useSearchParams } from "next/navigation";
 import { api, getToken } from "../../lib/api";
 import { clock } from "../../lib/format";
 import { getAudio, saveAudio } from "../../lib/db";
+import { THEMES, applyTheme, getTheme } from "../../lib/theme";
 
 let keyCounter = 1000;
 const newKey = () => "n" + keyCounter++;
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const VERSE_RE = /\b(?:[1-3]\s+)?[A-Z][a-z]{2,11}\s+\d{1,3}:\d{1,3}(?:-\d{1,3})?\b/g;
+function findVerses(text) {
+  return [...new Set(text.match(VERSE_RE) || [])];
+}
 
 /** Paragraphs as the server grouped them. `segs` keeps the original timed sentences of untouched paragraphs. */
 function fromServer(data) {
@@ -82,6 +87,8 @@ function Editor() {
   const [fmt, setFmt] = useState("docx");
   const [stamps, setStamps] = useState(false);
   const [undoCount, setUndoCount] = useState(0);
+  const [theme, setTheme] = useState("light");
+  useEffect(() => { const t = getTheme(); setTheme(t); applyTheme(t); }, []);
 
   const audioRef = useRef(null);
   const parasRef = useRef([]);
@@ -271,6 +278,11 @@ function Editor() {
     commit(next, true);
   }
 
+  function prependTag(i, tag) {
+    const curText = parasRef.current[i].text.trim();
+    if (curText.startsWith(tag)) return;
+    commit(parasRef.current.map((p, j) => (j === i ? { ...p, text: `${tag} ${curText}`, edited: true } : p)), true);
+  }
   function remove(i) {
     commit(parasRef.current.filter((_, j) => j !== i), true);
   }
@@ -336,6 +348,8 @@ function Editor() {
     }
   }
 
+  const wordCount = useMemo(() => paras.reduce((n, p) => n + (p.text.trim() ? p.text.trim().split(/\s+/).length : 0), 0), [paras]);
+  const readMins = Math.max(1, Math.round(wordCount / 180));
   const shown = onlyCheck ? paras.map((p, i) => [p, i]).filter(([p]) => p.low) : paras.map((p, i) => [p, i]);
   const saveLabel = { saved: "Saved", unsaved: "Unsaved", saving: "Saving...", error: "Not saved" }[save];
 
@@ -347,6 +361,7 @@ function Editor() {
       <div className="etop">
         <a className="btn ghost" style={{ height: 40 }} href="/transcribe/" onClick={(e) => { if (save !== "saved") { e.preventDefault(); flush().then(() => { window.location.href = "/transcribe/"; }); } }}>Back</a>
         <input className="tin" value={title} aria-label="Title" onChange={(e) => { setTitle(e.target.value); titleRef.current = e.target.value; markDirty(); }} />
+        <span className="meta-pill">{wordCount} words · ~{readMins}m read</span>
         <span className={"sv " + (save === "error" ? "error" : "")} role="status">{saveLabel}</span>
         <div className="tools">
           <button className="tbtn" onClick={undo} disabled={!undoCount}>Undo</button>
@@ -354,6 +369,9 @@ function Editor() {
           <button className="tbtn" onClick={nextCheck} disabled={!lows}>Next check ({lows})</button>
           <button className={"tbtn" + (onlyCheck ? " on" : "")} onClick={() => setOnlyCheck(!onlyCheck)} disabled={!lows && !onlyCheck}>Only uncertain</button>
           <button className={"tbtn" + (showExport ? " on" : "")} onClick={() => setShowExport(!showExport)}>Export</button>
+          <select className="theme-sel" aria-label="Theme" value={theme} onChange={(e) => { setTheme(e.target.value); applyTheme(e.target.value); }}>
+            {THEMES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
         </div>
       </div>
 
@@ -389,8 +407,18 @@ function Editor() {
             <button className="ts" onClick={() => seek(p.start)} aria-label={`Play from ${clock(p.start)}`} disabled={!audioUrl}>{clock(p.start)}</button>
             <div className="pbody">
               {p.low && <span className="chk">CHECK THIS PART</span>}
+              {findVerses(p.text).length > 0 && (
+                <div className="verse-row">
+                  {findVerses(p.text).map((v) => <span key={v} className="verse-chip">{v}</span>)}
+                </div>
+              )}
               <Area value={p.text} label={`Paragraph at ${clock(p.start)}`} setRef={(el) => { areas.current[p.key] = el; }}
                 onChange={(e) => setText(i, e.target.value)} onKeyDown={(e) => onKey(i, e)} onFocus={() => { focusIdx.current = i; }} />
+              <div className="p-tags">
+                <button type="button" className="ptag" onClick={() => prependTag(i, "##")}>+ Heading</button>
+                <button type="button" className="ptag" onClick={() => prependTag(i, "[Scripture]")}>+ Scripture</button>
+                <button type="button" className="ptag" onClick={() => prependTag(i, "[Prayer]")}>+ Prayer</button>
+              </div>
             </div>
             <button className="px" aria-label={`Delete paragraph at ${clock(p.start)}`} onClick={() => remove(i)}>×</button>
           </div>
