@@ -54,6 +54,89 @@ function hash(s) {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return h;
 }
+const coverJobs = new Map();
+const coverListeners = new Map();
+let activeCoverWorkers = 0;
+const coverQueue = [];
+
+function runNextCover() {
+  while (activeCoverWorkers < 2 && coverQueue.length > 0) {
+    const task = coverQueue.shift();
+    activeCoverWorkers++;
+    task().finally(() => {
+      activeCoverWorkers--;
+      runNextCover();
+    });
+  }
+}
+
+function enqueueCoverWork(fn) {
+  return new Promise((resolve, reject) => {
+    coverQueue.push(() => fn().then(resolve, reject));
+    runNextCover();
+  });
+}
+
+function notifyCoverReady(id, blob) {
+  const subs = coverListeners.get(id);
+  if (subs) subs.forEach((fn) => fn(blob));
+}
+
+function ensureCoverBlob(id, sourceUrl, onPageCount) {
+  if (coverJobs.has(id)) return coverJobs.get(id);
+  const job = (async () => {
+    let blob = await idbGet("covers", id);
+    const hasPages = Boolean(Number(localStorage.getItem("pages:" + id)));
+    if (blob && hasPages) return blob;
+
+    return enqueueCoverWork(async () => {
+      let cachedBlob = await idbGet("covers", id);
+      let pdfBlob = await idbGet("pdfs", id);
+      if (!pdfBlob && (!cachedBlob || !Number(localStorage.getItem("pages:" + id)))) {
+        if (sourceUrl) {
+          const response = await fetch(sourceUrl);
+          if (!response.ok) throw new Error("Could not load sample PDF.");
+          pdfBlob = await response.blob();
+        } else {
+          const response = await api(`/api/documents/${id}/file`, { raw: true });
+          pdfBlob = await response.blob();
+        }
+      }
+      if (pdfBlob) {
+        const pdfjs = await loadPdfjs();
+        const pdf = await pdfjs.getDocument({ data: new Uint8Array(await pdfBlob.arrayBuffer()) }).promise;
+        try {
+          if (Number(localStorage.getItem("pages:" + id)) !== pdf.numPages) {
+            localStorage.setItem("pages:" + id, String(pdf.numPages));
+            onPageCount?.();
+          }
+          if (!cachedBlob) {
+            const page = await pdf.getPage(1);
+            const base = page.getViewport({ scale: 1 });
+            const viewport = page.getViewport({ scale: 260 / base.width });
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            await page.render({ canvasContext: canvas.getContext("2d", { alpha: false }), viewport }).promise;
+            cachedBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+            if (cachedBlob) {
+              await idbPut("covers", id, cachedBlob);
+              notifyCoverReady(id, cachedBlob);
+            }
+          }
+        } finally {
+          await pdf.destroy();
+        }
+      }
+      return cachedBlob;
+    });
+  })().finally(() => {
+    coverJobs.delete(id);
+  });
+  coverJobs.set(id, job);
+  return job;
+}
+
 function Cover({ id, title, children, onPageCount, sourceUrl }) {
   const h = hash(id);
   const ref = useRef(null);
@@ -64,51 +147,21 @@ function Cover({ id, title, children, onPageCount, sourceUrl }) {
     let objectUrl = "";
     let observer;
 
+    function applyBlob(blob) {
+      if (!active || !blob) return;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(blob);
+      setSrc(objectUrl);
+    }
+
+    if (!coverListeners.has(id)) coverListeners.set(id, new Set());
+    coverListeners.get(id).add(applyBlob);
+
     async function createCover() {
       try {
-        let blob = await idbGet("covers", id);
-        let pdfBlob = Number(localStorage.getItem("pages:" + id)) ? null : await idbGet("pdfs", id);
-        if (!pdfBlob && (!blob || !Number(localStorage.getItem("pages:" + id)))) {
-          if (sourceUrl) {
-            const response = await fetch(sourceUrl);
-            if (!response.ok) throw new Error("Could not load the sample PDF.");
-            pdfBlob = await response.blob();
-          } else {
-            const response = await api(`/api/documents/${id}/file`, { raw: true });
-            pdfBlob = await response.blob();
-          }
-        }
-        if (pdfBlob || !blob) {
-          const pdfjs = await loadPdfjs();
-          const pdf = await pdfjs.getDocument({ data: new Uint8Array(await (pdfBlob || blob).arrayBuffer()) }).promise;
-          try {
-            if (Number(localStorage.getItem("pages:" + id)) !== pdf.numPages) {
-              localStorage.setItem("pages:" + id, String(pdf.numPages));
-              onPageCount?.();
-            }
-            if (!blob) {
-              const page = await pdf.getPage(1);
-              const base = page.getViewport({ scale: 1 });
-              const viewport = page.getViewport({ scale: 220 / base.width });
-              const canvas = document.createElement("canvas");
-              canvas.width = Math.ceil(viewport.width);
-              canvas.height = Math.ceil(viewport.height);
-              await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-              blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
-              if (!blob) throw new Error("Could not create a book cover preview.");
-              await idbPut("covers", id, blob);
-            }
-          } finally {
-            await pdf.destroy();
-          }
-        }
-        if (active && blob) {
-          objectUrl = URL.createObjectURL(blob);
-          setSrc(objectUrl);
-        }
-      } catch {
-        // Keep the generated cover artwork when a PDF preview cannot be rendered.
-      }
+        const blob = await ensureCoverBlob(id, sourceUrl, onPageCount);
+        applyBlob(blob);
+      } catch {}
     }
 
     const node = ref.current;
@@ -126,6 +179,7 @@ function Cover({ id, title, children, onPageCount, sourceUrl }) {
     return () => {
       active = false;
       observer?.disconnect();
+      coverListeners.get(id)?.delete(applyBlob);
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [id, onPageCount, sourceUrl]);

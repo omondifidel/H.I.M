@@ -127,6 +127,14 @@ function PageThumb({ pdf, pageNumber, active, onSelect }) {
           canvas.height = Math.ceil(viewport.height);
           await p.render({ canvasContext: canvas.getContext("2d", { alpha: false }), viewport }).promise;
           if (!cancelled) setRendered(true);
+          if (pageNumber === 1) {
+            try {
+              const existing = await idbGet("covers", id);
+              if (!existing) {
+                canvas.toBlob((b) => { if (b) idbPut("covers", id, b).catch(() => {}); }, "image/jpeg", 0.85);
+              }
+            } catch {}
+          }
         } catch {}
       })();
     }, { rootMargin: "240px 0px" });
