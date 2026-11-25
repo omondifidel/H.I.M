@@ -3,10 +3,10 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.modules.auth.deps import require_app
+from app.modules.auth.deps import current_user, require_app
 from app.modules.auth.models import User
 from app.modules.transcription import service
-from app.modules.transcription.schemas import (CompleteIn, EngineInfo, TranscriptionCreate, TranscriptionOut,
+from app.modules.transcription.schemas import (CompleteIn, EngineInfo, SermonOut, TranscriptionCreate, TranscriptionOut,
                                                TranscriptOut, TranscriptPatch, UploadStatus)
 
 router = APIRouter(prefix="/api/transcriptions", tags=["transcription"])
@@ -76,6 +76,17 @@ def delete(job_id: str, user: User = Depends(stt_user), db: Session = Depends(ge
 @router.get("/{job_id}/audio")
 def audio(job_id: str, user: User = Depends(stt_user), db: Session = Depends(get_db)):
     return FileResponse(service.audio_file(db, user, job_id))
+
+
+# Listening (no Transcribe access needed): sermons found in search open read-only for everyone signed in.
+@router.get("/{job_id}/listen", response_model=SermonOut)
+def listen(job_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return service.sermon(db, user, job_id)
+
+
+@router.get("/{job_id}/listen/audio")
+def listen_audio(job_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return FileResponse(service.sermon_audio(db, job_id))
 
 
 @router.get("/{job_id}/export")

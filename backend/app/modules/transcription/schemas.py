@@ -74,6 +74,16 @@ class TranscriptOut(BaseModel):
     notes: list[SermonNote] = []
 
 
+class SermonOut(BaseModel):
+    """Read-only view of a finished sermon, for anyone who found it in search. Notes stay private."""
+    id: str
+    title: str
+    duration: float
+    paragraphs: list[Paragraph]
+    mine: bool
+    has_audio: bool
+
+
 class TranscriptPatch(BaseModel):
     title: Optional[str] = None
     segments: Optional[list[Segment]] = None

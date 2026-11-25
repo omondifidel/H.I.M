@@ -12,9 +12,10 @@ from app.core.utils import utcnow
 from app.modules.auth.models import User
 from app.modules.transcription import engine as engines
 from app.modules.transcription import merge
+from app.modules.search import index as search_index
 from app.modules.transcription.models import Transcription, TranscriptionChunk
-from app.modules.transcription.schemas import (EngineInfo, Paragraph, Segment, TranscriptionCreate, TranscriptOut,
-                                               TranscriptPatch, UploadStatus)
+from app.modules.transcription.schemas import (EngineInfo, Paragraph, SermonOut, Segment, TranscriptionCreate,
+                                               TranscriptOut, TranscriptPatch, UploadStatus)
 
 PART_SIZE = 8 * 1024 * 1024  # the browser sends the recording in 8 MB pieces
 MAX_PART = 16 * 1024 * 1024
@@ -164,6 +165,7 @@ def patch(db: Session, user: User, job_id: str, data: TranscriptPatch) -> Transc
     if data.notes is not None:
         job.notes = [n.model_dump() for n in data.notes]
     db.commit()
+    search_index.index_sermon(db, job)
     return transcript(db, user, job_id) if job.status == "done" else TranscriptOut(
         id=job.id, title=job.title, duration=job.duration, segments=[], paragraphs=[])
 
@@ -173,6 +175,7 @@ def delete_job(db: Session, user: User, job_id: str) -> None:
     db.execute(delete(TranscriptionChunk).where(TranscriptionChunk.transcription_id == job.id))
     db.delete(job)
     db.commit()
+    search_index.remove_source(db, job_id)
     remove_files(job_id)
 
 
@@ -193,6 +196,27 @@ def retry(db: Session, user: User, job_id: str) -> Transcription:
     job.status, job.error, job.note = "queued", "", "Waiting for its turn"
     db.commit()
     return job
+
+
+# ---------- listening: every finished sermon can be found in search and played by anyone signed in ----------
+def _finished(db: Session, job_id: str) -> Transcription:
+    job = db.get(Transcription, job_id)
+    if not job or job.status != "done":
+        raise NotFound("Sermon not found")
+    return job
+
+
+def sermon(db: Session, user: User, job_id: str) -> SermonOut:
+    job = _finished(db, job_id)
+    return SermonOut(id=job.id, title=job.title, duration=job.duration, paragraphs=_paragraphs(job.segments or []),
+                     mine=job.user_id == user.id, has_audio=original_path(job) is not None)
+
+
+def sermon_audio(db: Session, job_id: str) -> Path:
+    path = original_path(_finished(db, job_id))
+    if path is None:
+        raise NotFound("The recording is no longer stored on the server")
+    return path
 
 
 def audio_file(db: Session, user: User, job_id: str) -> Path:

@@ -6,6 +6,7 @@ import { idbAll, idbDel, idbDelPrefix, idbGet, idbKeys, idbPut } from "../lib/db
 import { clearLocalNotes, removeNote, syncNotes } from "../lib/notes";
 import { applyTheme, getTheme, THEMES } from "../lib/theme";
 import NotificationBell from "../components/NotificationBell";
+import DeepSearch from "../components/DeepSearch";
 import { extractParagraphs, loadPdfjs } from "../lib/pdfText";
 
 const Icon = ({ d, size = 24, fill }) => (
@@ -38,6 +39,7 @@ const P = {
 };
 const NAV = {
   library: <><path d="M5 5.5A2.5 2.5 0 017.5 3H11v18H7.5A2.5 2.5 0 015 18.5z" /><path d="M13 3h3.5A2.5 2.5 0 0119 5.5v13a2.5 2.5 0 01-2.5 2.5H13z" /><path d="M8 7h.5M16 7h.5" /></>,
+  search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
   notes: <><path d="M6 3.5h8l4 4v13H6z" /><path d="M14 3.5v4h4M9 12h6M9 16h6" /></>,
   offline: <><path d="M12 3.5v10M8.5 10l3.5 3.5 3.5-3.5M5 16v3h14v-3" /></>,
   settings: <><path d="M4 7h5m4 0h7M4 17h2m4 0h10M9 4v6m-2 4v6" /></>,
@@ -712,7 +714,7 @@ function Library({ onLogout, user }) {
   const displayedStreak = demoMode ? 4 : streak;
   const focusProgress = ((focusDuration * 60 - focusSeconds) / (focusDuration * 60)) * 100;
   const focusTime = `${String(Math.floor(focusSeconds / 60)).padStart(2, "0")}:${String(focusSeconds % 60).padStart(2, "0")}`;
-  const navItems = [["library", "Library", NAV.library], ["notes", "Notes", NAV.notes], ["offline", "Offline", NAV.offline], ["settings", "Settings", NAV.settings]];
+  const navItems = [["library", "Library", NAV.library], ["search", "Search", NAV.search], ["notes", "Notes", NAV.notes], ["offline", "Offline", NAV.offline], ["settings", "Settings", NAV.settings]];
 
   useEffect(() => { if (last) setMiniPage(last.last_page || 1); }, [last?.id, last?.last_page]);
 
@@ -1083,6 +1085,8 @@ function Library({ onLogout, user }) {
           )}
         </>
       ) : null}
+
+      {tab === "search" && <DeepSearch />}
 
       {tab === "notes" && (
         <div className="notes-page">

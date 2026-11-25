@@ -15,6 +15,7 @@ from app.modules.auth.groups import group_ids_for
 from app.modules.auth.models import User
 from app.modules.library.models import Document, DocumentProgress, DocumentShare, Note
 from app.modules.library.schemas import DocumentOut, NoteIn, ProgressIn
+from app.modules.search import index as search_index
 from app.modules.usage import service as usage
 
 
@@ -104,6 +105,7 @@ async def create_document(db: Session, user: User, file: UploadFile) -> Document
     doc = Document(id=doc_id, user_id=user.id, title=(file.filename or "Untitled.pdf")[:300], size=size)
     db.add(doc)
     db.commit()
+    search_index.index_document_later(doc_id)
     return doc
 
 
@@ -126,6 +128,7 @@ def _purge(db: Session, doc: Document) -> None:
     db.execute(delete(DocumentProgress).where(DocumentProgress.document_id == doc.id))
     db.delete(doc)
     db.commit()
+    search_index.remove_source(db, doc.id)  # its pages and the notes on it
     get_storage().delete(pdf_key(doc.id))
 
 
@@ -167,6 +170,7 @@ def upsert_note(db: Session, user: User, note_id: str, n: NoteIn) -> Note:
         existing.page, existing.paragraph, existing.body = n.page, n.paragraph, n.body
         existing.updated_at, existing.deleted = ts, n.deleted
     db.commit()
+    search_index.index_note(db, existing)
     return existing
 
 

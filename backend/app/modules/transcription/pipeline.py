@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.utils import utcnow
+from app.modules.search import index as search_index
 from app.modules.transcription import merge
 from app.modules.transcription.engine import EngineError, NotConfigured, RateLimited, get_engine
 from app.modules.transcription.media import MediaError, make_chunk, probe_duration
@@ -123,6 +124,7 @@ def _process(db: Session, job: Transcription, sleep: Callable[[float], None]) ->
     job.status, job.progress, job.note, job.finished_at = "done", 100, "", utcnow()
     db.execute(delete(TranscriptionChunk).where(TranscriptionChunk.transcription_id == job.id))  # raw pieces no longer needed
     db.commit()
+    search_index.index_sermon(db, job)
     shutil.rmtree(chunk_dir, ignore_errors=True)
 
 

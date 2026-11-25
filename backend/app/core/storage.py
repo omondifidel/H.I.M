@@ -1,6 +1,6 @@
 """Where uploaded PDFs live. "local" uses the server's disk (lost when a free host restarts);
 "s3" uses any S3-compatible bucket (Cloudflare R2, Backblaze B2, Supabase Storage, MinIO...) and is permanent.
-Callers only ever use put_file / exists / delete / response."""
+Callers only ever use put_file / exists / delete / response / read_bytes."""
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -36,6 +36,9 @@ class LocalStorage:
     def response(self, key: str, media_type: str) -> Response:
         return FileResponse(self._path(key), media_type=media_type)
 
+    def read_bytes(self, key: str) -> bytes:
+        return self._path(key).read_bytes()
+
 
 class S3Storage:
     def __init__(self, endpoint: str, bucket: str, access_key: str, secret_key: str, region: str, client=None):
@@ -70,6 +73,9 @@ class S3Storage:
         obj = self.client.get_object(Bucket=self.bucket, Key=key)
         return StreamingResponse(obj["Body"].iter_chunks(256 * 1024), media_type=media_type,
                                  headers={"Content-Length": str(obj["ContentLength"])})
+
+    def read_bytes(self, key: str) -> bytes:
+        return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
 
 
 _storage: Optional[object] = None
