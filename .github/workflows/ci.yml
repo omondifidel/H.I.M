@@ -10,6 +10,15 @@ jobs:
   backend-check:
     name: Backend Syntax & Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:  # search uses Postgres full-text search, so its tests need a real database
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: him_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,6 +30,8 @@ jobs:
         run: pip install -r backend/requirements.txt pytest
       - name: Check Python syntax & run tests
         working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/him_test
         run: |
           python -m compileall app
           if [ -d "tests" ]; then python -m pytest -q; fi  # -m puts backend/ on the path so tests can import app
