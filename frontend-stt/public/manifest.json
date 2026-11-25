@@ -1,0 +1,13 @@
+{
+  "name": "HIM Ministries · Transcribe",
+  "short_name": "HIM Transcribe",
+  "start_url": "/transcribe/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1E3A5F",
+  "icons": [
+    { "src": "/transcribe/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/transcribe/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/transcribe/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
