@@ -5,6 +5,7 @@ import { api, getToken, getUser, setSession, setToken } from "../lib/api";
 import { idbAll, idbDel, idbDelPrefix, idbGet, idbKeys, idbPut } from "../lib/db";
 import { clearLocalNotes, removeNote, syncNotes } from "../lib/notes";
 import { applyTheme, getTheme, THEMES } from "../lib/theme";
+import NotificationBell from "../components/NotificationBell";
 import { extractParagraphs, loadPdfjs } from "../lib/pdfText";
 
 const Icon = ({ d, size = 24, fill }) => (
@@ -642,11 +643,12 @@ function Library({ onLogout, user }) {
   });
   const weekData = demoMode ? DEMO_WEEK : liveWeekData;
   const weeklyPages = weekData.reduce((total, day) => total + day.count, 0);
+  const PIE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"];
   let chartAngle = 0;
   const pieSegments = weekData.map((day, index) => {
     const start = chartAngle;
     chartAngle += weeklyPages ? (day.count / weeklyPages) * 360 : 0;
-    return `var(--week-color-${index}) ${start}deg ${chartAngle}deg`;
+    return `${PIE_COLORS[index % PIE_COLORS.length]} ${start}deg ${chartAngle}deg`;
   });
   const pieBackground = weeklyPages ? `conic-gradient(${pieSegments.join(",")})` : "conic-gradient(var(--surface2) 0deg 360deg)";
   const journey = demoMode
@@ -753,9 +755,20 @@ function Library({ onLogout, user }) {
             <span className="brandmark-icon"><HimMark size={20} /></span>
             <span>HIM <span>Ministries</span></span>
           </a>
-          <div className="header-account">
-            <span className="profile-dot">{(user?.email || "R")[0].toUpperCase()}</span>
-            <span>{user?.email || "Reader"}</span>
+          <div className="header-tools">
+            <select
+              className="topbar-theme"
+              value={theme}
+              onChange={(e) => { setTheme(e.target.value); applyTheme(e.target.value); }}
+              aria-label="Appearance theme"
+            >
+              {THEMES.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+            </select>
+            <NotificationBell />
+            <div className="header-account">
+              <span className="profile-dot">{(user?.email || "R")[0].toUpperCase()}</span>
+              <span>{user?.email || "Reader"}</span>
+            </div>
           </div>
         </header>
 
@@ -828,7 +841,7 @@ function Library({ onLogout, user }) {
                     </div>
                     <div className="pie-legend">
                       {weekData.map((day, index) => (
-                        <span key={day.label + index}><i style={{ background: `var(--week-color-${index})` }} />{day.label}<b>{day.count}</b></span>
+                        <span key={day.label + index}><i style={{ background: PIE_COLORS[index % PIE_COLORS.length] }} />{day.label}<b>{day.count}</b></span>
                       ))}
                     </div>
                   </div>
