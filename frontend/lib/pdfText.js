@@ -23,7 +23,7 @@ export async function extractParagraphs(pdf, pageNum) {
     const y = it.transform[5];
     const size = Math.abs(it.transform[3]) || it.height || 10;
     if (!cur || Math.abs(cur.y - y) > size * 0.5) {
-      cur = { y, size, text: "" };
+      cur = { y, x: it.transform[4], size, text: "" };
       lines.push(cur);
     }
     cur.text += it.str;
@@ -57,7 +57,8 @@ export async function extractParagraphs(pdf, pageNum) {
     if (i > 0) {
       const prev = body[i - 1];
       const gap = prev.y - l.y;
-      if (gap > median * 1.45 || gap < 0 || Math.abs(l.size - prev.size) > 1.5) flush();
+      const indented = (l.x - prev.x) > 10 && prev.text.length > 35;
+      if (gap > median * 1.18 || indented || gap < 0 || Math.abs(l.size - prev.size) > 1.5) flush();
     }
     if (buf.endsWith("-")) buf = buf.slice(0, -1) + l.text;
     else buf += (buf ? " " : "") + l.text;
