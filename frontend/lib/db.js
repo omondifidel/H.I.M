@@ -1,8 +1,8 @@
 // Tiny IndexedDB wrapper: "pdfs" (downloaded files), "paras" (paragraph splits), "notes" (offline notes).
-const STORES = ["pdfs", "paras", "notes"];
+const STORES = ["pdfs", "paras", "notes", "covers"];
 function open() {
   return new Promise((resolve, reject) => {
-    const r = indexedDB.open("readaloud", 2);
+    const r = indexedDB.open("readaloud", 3);
     r.onupgradeneeded = () => {
       for (const s of STORES) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s);
     };
