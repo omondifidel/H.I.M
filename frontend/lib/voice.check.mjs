@@ -1,6 +1,6 @@
 // Run: node frontend/lib/voice.check.mjs
 import assert from "node:assert/strict";
-import { afterWake, dictation, nextRate, parseCommand as p, sentence, toNumber, wakeCommand } from "./voice.js";
+import { afterWake, dictation, nextRate, parseCommand as p, sentence, toNumber, wakeCommand, firstSentence } from "./voice.js";
 
 const cases = {
   "Pause": { cmd: "pause" },
@@ -61,4 +61,8 @@ assert.equal(wakeCommand("read at 1.25x. The garden needs"), "read at 1.25x");
 assert.equal(wakeCommand("what did he say about faith? Choose a spot"), "what did he say about faith");
 assert.equal(wakeCommand("go to page 2"), "go to page 2");
 assert.equal(wakeCommand("choose a spot with good soil"), null); // nothing usable: listen again
+assert.deepEqual(p("What can I say?"), { cmd: "help" });
+assert.deepEqual(p("help"), { cmd: "help" });
+assert.equal(firstSentence("bump the speed up. Choose a spot"), "bump the speed up");
+assert.equal(firstSentence("read at 1.25x"), "read at 1.25x");
 console.log("voice.js: all checks passed");

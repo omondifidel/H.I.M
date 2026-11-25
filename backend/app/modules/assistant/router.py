@@ -1,4 +1,5 @@
 """Voice Q&A: answers a question strictly from the open book page(s) or sermon transcript."""
+import json
 import re
 from typing import Optional
 
@@ -136,3 +137,96 @@ def listen(file: UploadFile = File(...), user: User = Depends(current_user)):
     if r.status_code >= 400:
         raise AppError("The speech service could not understand that recording.")
     return HeardOut(text=r.json().get("text", "").strip())
+
+
+# ---------- understanding any wording of a voice command ----------
+# The phone/browser matches common phrasings itself; anything it can't match comes here and the
+# chat model maps it to one of the actions the app has. It can only choose from this list.
+COMMANDS = """pause: stop reading or playing
+resume: start reading or playing again
+rate: reading speed; arg is a number 0.5 to 3, or "+" for faster / "-" for slower
+page: go to a page; arg is the page number
+minute: go to a minute in a sermon; arg is the minute number
+skip: jump back or forward in a sermon; arg is seconds, negative for back
+paragraph: next or previous paragraph; arg is 1 or -1
+turn: next or previous page; arg is 1 or -1
+bookmark: bookmark the current place
+theme: change colours; arg is "dark", "light" or "sepia"
+note: start a note; arg is the words to write, or "" to just open a new note
+notes: show the notes (arg true) or close them (arg false)
+lastNote: go to the most recent note
+deleteNote: delete the open note
+handsfree: turn hands-free listening on (arg true) or off (arg false)
+help: say which commands exist
+ask: a question about the open book or sermon; arg is the question"""
+INTENT = (
+    "Map one spoken request (English, Kiswahili or mixed) to exactly one app action. Actions:\n" + COMMANDS +
+    '\nReply with JSON only: {"cmd": "<action>", "arg": <value or null>}. '
+    'If the request matches none of them, reply {"cmd": null}.'
+)
+_NO_ARG = {"pause", "resume", "bookmark", "lastNote", "deleteNote", "help"}
+
+
+class HeardText(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+
+
+class CommandOut(BaseModel):
+    command: Optional[dict] = None
+
+
+def clean_command(raw) -> Optional[dict]:
+    """Keeps only actions the app has, with sensible values. Anything else becomes None."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("cmd"), str):
+        return None
+    cmd, arg = raw["cmd"], raw.get("arg")
+    try:
+        if cmd in _NO_ARG:
+            return {"cmd": cmd}
+        if cmd == "rate":
+            return {"cmd": cmd, "arg": arg if arg in ("+", "-") else min(3.0, max(0.5, float(arg)))}
+        if cmd in ("page", "minute"):
+            n = int(float(arg))
+            return {"cmd": cmd, "arg": n} if n >= (1 if cmd == "page" else 0) else None
+        if cmd == "skip":
+            return {"cmd": cmd, "arg": max(-3600, min(3600, int(float(arg))))}
+        if cmd in ("paragraph", "turn"):
+            return {"cmd": cmd, "arg": -1 if float(arg) < 0 else 1}
+        if cmd == "theme":
+            return {"cmd": cmd, "arg": arg} if arg in ("dark", "light", "sepia") else None
+        if cmd in ("notes", "handsfree"):
+            return {"cmd": cmd, "arg": arg is True or str(arg).lower() in ("true", "on", "1")}
+        if cmd in ("note", "ask"):
+            text = str(arg or "").strip()[:500]
+            return {"cmd": cmd, "arg": text} if text or cmd == "note" else None
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def understand(text: str) -> Optional[dict]:
+    if not settings.groq_api_key:
+        return None  # the fixed phrases still work without a key
+    try:
+        r = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {settings.groq_api_key}"},
+            json={
+                "model": settings.groq_chat_model,
+                "temperature": 0,
+                "max_tokens": 400,  # reasoning models think first
+                "response_format": {"type": "json_object"},
+                "messages": [{"role": "system", "content": INTENT}, {"role": "user", "content": text}],
+            },
+            timeout=20.0,
+        )
+        if r.status_code >= 400:
+            return None
+        return clean_command(json.loads(r.json()["choices"][0]["message"]["content"]))
+    except (httpx.HTTPError, ValueError, KeyError, IndexError):
+        return None
+
+
+@router.post("/command", response_model=CommandOut)
+def command(data: HeardText, user: User = Depends(current_user)):
+    return CommandOut(command=understand(data.text))
