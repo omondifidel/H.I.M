@@ -6,6 +6,7 @@ import { api } from "../../lib/api";
 import { idbGet, idbPut } from "../../lib/db";
 import { listNotes, newNoteId, putNote, removeNote, syncNotes } from "../../lib/notes";
 import { extractParagraphs, loadPdfjs } from "../../lib/pdfText";
+import { applyTheme, getTheme, THEMES } from "../../lib/theme";
 
 /** Split a paragraph into short chunks so browsers never cut long speech off. */
 function splitChunks(text, max = 220) {
@@ -51,6 +52,55 @@ const P = {
 };
 const BARS = [5, 9, 14, 8, 16, 11, 6, 13, 18, 10, 7, 15, 12, 20, 9, 6, 14, 17, 8, 12, 19, 10, 5, 13, 16, 7, 11, 15, 9, 6, 12, 18, 8, 14, 10, 7, 13, 16, 9, 5, 11, 14, 8];
 const PAL = ["#FFB547", "#5B8DEF", "#4FD1A5", "#FF7A59", "#C08CF5"];
+const localDayKey = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
+function PdfPageView({ pdf, pageNumber }) {
+  const canvasRef = useRef(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let renderTask;
+    async function renderPage() {
+      try {
+        const page = await pdf.getPage(pageNumber);
+        if (!active) return;
+        const base = page.getViewport({ scale: 1 });
+        const width = Math.max(280, Math.min(900, canvasRef.current?.parentElement?.clientWidth || 720));
+        const viewport = page.getViewport({ scale: Math.min(1.8, width / base.width) });
+        const canvas = canvasRef.current;
+        const context = canvas.getContext("2d", { alpha: false });
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.ceil(viewport.width * ratio);
+        canvas.height = Math.ceil(viewport.height * ratio);
+        canvas.style.width = "100%";
+        renderTask = page.render({
+          canvasContext: context,
+          viewport,
+          transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0],
+        });
+        await renderTask.promise;
+      } catch {
+        if (active) setFailed(true);
+      }
+    }
+    setFailed(false);
+    renderPage();
+    return () => {
+      active = false;
+      renderTask?.cancel();
+    };
+  }, [pdf, pageNumber]);
+
+  return (
+    <figure className="pdf-page">
+      {failed ? <figcaption className="muted sm">This page preview could not be displayed. The readable text is still available below.</figcaption> : <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} />}
+    </figure>
+  );
+}
 
 function Reader() {
   const sp = useSearchParams();
@@ -64,6 +114,7 @@ function Reader() {
   const [idx, setIdx] = useState(0);
   const [chunk, setChunk] = useState(0);
   const [pageInput, setPageInput] = useState("1");
+  const [seekPage, setSeekPage] = useState(1);
   const [paras, setParas] = useState([]);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
@@ -72,6 +123,7 @@ function Reader() {
   const [hl, setHl] = useState(true);
   const [panel, setPanel] = useState(null); // null | "notes" | "voice"
   const [sleepMin, setSleepMin] = useState(0);
+  const [theme, setTheme] = useState("light");
 
   const pdfRef = useRef(null);
   const cache = useRef(new Map());
@@ -356,6 +408,7 @@ function Reader() {
 
   // ---- load settings and voices ----
   useEffect(() => {
+    setTheme(getTheme());
     const r = parseFloat(localStorage.getItem("tts:rate") || "1") || 1;
     rateRef.current = r;
     setRate(r);
@@ -379,6 +432,38 @@ function Reader() {
     synth.addEventListener("voiceschanged", load);
     return () => synth.removeEventListener("voiceschanged", load);
   }, []);
+
+  function chooseTheme(value) {
+    setTheme(value);
+    applyTheme(value);
+  }
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    let last = Date.now();
+    let visible = !document.hidden;
+    const saveVisibleTime = () => {
+      const now = Date.now();
+      if (visible) {
+        const seconds = Math.floor((now - last) / 1000);
+        if (seconds > 0) {
+          const total = Number(localStorage.getItem("reading-seconds")) || 0;
+          localStorage.setItem("reading-seconds", String(total + seconds));
+        }
+      }
+      last = visible && !document.hidden ? last + Math.floor((now - last) / 1000) * 1000 : now;
+      visible = !document.hidden;
+    };
+    const timer = setInterval(saveVisibleTime, 15000);
+    document.addEventListener("visibilitychange", saveVisibleTime);
+    window.addEventListener("pagehide", saveVisibleTime);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", saveVisibleTime);
+      window.removeEventListener("pagehide", saveVisibleTime);
+      saveVisibleTime();
+    };
+  }, [status]);
 
   // ---- load the PDF ----
   useEffect(() => {
@@ -438,6 +523,7 @@ function Reader() {
         show(p, startIdx, ps);
         if (ps.length === 0) setError("No readable text found in the first pages. This may be a scanned PDF (it needs OCR, coming later).");
         setStatus("ready");
+        if (sp.get("autoplay") === "1") setTimeout(() => { if (!dead) play(p, startIdx); }, 220);
         api(`/api/documents/${id}/opened`, { method: "POST" }).catch(() => {}); // tells the admin report this book was read
       } catch (e) {
         if (!dead) {
@@ -458,6 +544,12 @@ function Reader() {
   useEffect(() => {
     if (status !== "ready") return;
     localStorage.setItem("progress:" + id, JSON.stringify({ page, idx }));
+    try {
+      const day = localDayKey();
+      const activity = JSON.parse(localStorage.getItem("reading-activity") || "{}");
+      activity[day] = [...new Set([...(activity[day] || []), page])];
+      localStorage.setItem("reading-activity", JSON.stringify(activity));
+    } catch {}
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       api(`/api/documents/${id}/progress`, { method: "PUT", body: { page, paragraph: idx } }).catch(() => {});
@@ -465,6 +557,7 @@ function Reader() {
   }, [page, idx, status]);
 
   useEffect(() => { setPageInput(String(page)); }, [page]);
+  useEffect(() => { setSeekPage(page); }, [page]);
 
   // ---- keep the current paragraph in view ----
   useEffect(() => {
@@ -477,7 +570,7 @@ function Reader() {
   // ---- lock-screen / headset controls ----
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.metadata = new MediaMetadata({ title: title || "PDF", artist: "Read-Aloud PDF" });
+    navigator.mediaSession.metadata = new MediaMetadata({ title: title || "PDF", artist: "HIM Ministries" });
     const set = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch {} };
     set("play", () => latest.current.toggle());
     set("pause", () => latest.current.toggle());
@@ -498,7 +591,7 @@ function Reader() {
   const pinnedText = draft.paragraph != null && draft.page === page ? paras[draft.paragraph] : null;
 
   return (
-    <>
+    <main className="reader-shell">
       <div className="top">
         <Link href="/" className="ib" aria-label="Back to library"><Icon d={P.down} /></Link>
         <div className="t">
@@ -512,14 +605,19 @@ function Reader() {
           onKeyDown={(e) => { if (e.key === "Enter") goPage(pageInput); }}
         />
         <button className="ib" style={{ width: 36 }} aria-label="Next page with text" onClick={() => goPage(page + 1, 1)}><Icon size={20} d={P.down} /></button>
+        <select className="reader-theme" value={theme} onChange={(e) => chooseTheme(e.target.value)} aria-label="Appearance theme">
+          {THEMES.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+        </select>
       </div>
 
       <div className={"rtext" + (panel === "notes" ? " pad" : "")}>
         {status === "loading" && <p className="muted">Opening your PDF...</p>}
         {error && <p className="err" role="alert">{error}</p>}
+        {status === "ready" && pdfRef.current && <PdfPageView pdf={pdfRef.current} pageNumber={page} />}
         {paras.length === 0 && status === "ready" && !error && (
           <p className="muted">This page has no readable text (a cover, a picture or a scanned page). Use the page arrows to jump to the next page with text.</p>
         )}
+        {paras.length > 0 && <div className="readalong-label">READ ALONG <span>Tap any paragraph to start here</span></div>}
         {paras.map((t, i) => (
           <button key={i} id={"p" + i} type="button" className={"rd" + (i === idx ? " on" : "") + (i === idx && !hl ? " whole" : "")} onClick={() => jump(page, i)}>
             {i === idx && hl
@@ -536,6 +634,13 @@ function Reader() {
       <div className="player">
         <div className="in">
           <div className="row between muted sm"><span>Paragraph {paras.length ? idx + 1 : 0} of {paras.length}</span><span>Page {page}</span></div>
+          <label className="page-seek">
+            <span>Page <b>{seekPage}</b><span className="muted"> / {numPages || "..."}</span></span>
+            <input type="range" min="1" max={numPages || 1} value={Math.min(seekPage, numPages || 1)} aria-label="Jump to page"
+              onChange={(e) => setSeekPage(Number(e.target.value))}
+              onPointerUp={(e) => goPage(Number(e.currentTarget.value))}
+              onKeyUp={(e) => goPage(Number(e.currentTarget.value))} />
+          </label>
           <div className="wave" role="img" aria-label={`Progress on this page, ${pct} percent`}>
             {BARS.map((h, i) => <i key={i} className={(i / BARS.length) * 100 < pct ? "on" : ""} style={{ height: h * 2 }} />)}
           </div>
@@ -658,7 +763,7 @@ function Reader() {
           </div>
         </div>
       )}
-    </>
+    </main>
   );
 }
 
