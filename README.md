@@ -43,6 +43,7 @@ DEFAULT_APPS=library,transcribe
 # Transcription (Groq Whisper API - free key from [https://console.groq.com/keys](https://console.groq.com/keys))
 GROQ_API_KEY=gsk_your_actual_groq_api_key_here
 TRANSCRIBE_ENGINE=groq
+GROQ_CHAT_MODEL=openai/gpt-oss-120b   # voice Q&A, same Groq key
 MAX_AUDIO_MB=600
 
 # Storage & CORS
@@ -125,6 +126,37 @@ Always access the app via **`http://127.0.0.1:8000`** (do not mix `localhost` an
    - **Library & Reader:** `http://127.0.0.1:8000/`
    - **Admin Dashboard:** `http://127.0.0.1:8000/admin/`
    - **Transcription Engine:** `http://127.0.0.1:8000/transcribe/`
+
+---
+
+## Voice Assistant (hands-free)
+
+Tap the **mic orb** on the player bar (or press **Ctrl+Space**), say one command, and it runs.
+
+**Hands-free mode:** turn on the **Hands-free** pill in the reader, or the checkbox in the sermon editor. Then say **"Hey Nasoma"** ("Hey assistant" also works), either alone or followed by a command, e.g. "Hey Nasoma, go to page 42". Reading pauses as soon as the wake word is heard and resumes after the command. The setting is remembered on the device. While you dictate a note, the words appear live under it as you speak. Playback pauses while the mic listens and resumes afterwards. It works in Chrome and Edge, which have live speech recognition. The answers to questions use the same `GROQ_API_KEY`.
+
+| Say | Book reader | Sermon editor |
+| :--- | :--- | :--- |
+| "Pause" / "Resume" | Reading stops or starts | Audio stops or starts |
+| "Read faster", "Slow down", "Speed 1.25" | Changes speed by 0.25, or sets it | Same (up to 2x) |
+| "Go to page 42" / "Go to minute 5" | Jumps to the page | Jumps to the minute |
+| "Bookmark this paragraph" | 🔖 note pinned to the page and paragraph | 🔖 note at the current time |
+| "Switch to dark / light / sepia mode" | Changes the theme in all apps | Same |
+| "Open notes and write …" / "Take a note …" | Opens the notes drawer and types what you say, stamped with the page and paragraph | Opens Notes and types what you say, stamped with the mm:ss time |
+| "Stop note" (or tap the mic, or stay quiet for 8 s) | Ends the note | Ends the note |
+| "Next / previous paragraph" | Moves one paragraph | Jumps to the next or previous paragraph's time |
+| "Next / previous page" | Turns the page | Says sermons have no pages |
+| "Skip forward 30 seconds", "Go back", "Rewind" | Moves one paragraph forward or back | Skips by that many seconds (default 10) |
+| "Show my notes" / "Close notes" | Opens or closes the notes drawer | Opens or closes the Notes panel |
+| "Go to my last note" | Jumps to the page of your latest note | Jumps to that note's time |
+| "Delete that note" | Deletes the open note | Deletes the latest note |
+| "Stop" (hands-free, while an answer is spoken) | Cuts the answer off | Cuts the answer off |
+| "Stop listening" / "Hands-free on" | Turns hands-free off or on | Same |
+| "What did Sir Elvin say about faith in this message?" | Spoken answer taken only from pages ±2 around yours | Spoken answer taken only from the transcript |
+
+If the answer isn't in the text, the assistant says *"The text doesn't say."* Run the parser check with `node frontend/lib/voice.check.mjs`. Run the backend tests with `cd backend; pytest`.
+
+> `frontend/lib/voice.js`, `useVoice.js` and `theme.js` are copied into `frontend-stt/lib/`. Edit both copies.
 
 ---
 

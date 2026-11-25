@@ -8,6 +8,8 @@ import { listNotes, newNoteId, putNote, removeNote, syncNotes } from "../../lib/
 import { extractParagraphs, loadPdfjs } from "../../lib/pdfText";
 import { applyTheme, getTheme, THEMES } from "../../lib/theme";
 import NotificationBell from "../../components/NotificationBell";
+import { useVoice } from "../../lib/useVoice";
+import { nextRate } from "../../lib/voice";
 
 /** Split a paragraph into short chunks so browsers never cut long speech off. */
 function splitChunks(text, max = 220) {
@@ -52,6 +54,8 @@ const P = {
   pause: <><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></>,
 };
 const BARS = [5, 9, 14, 8, 16, 11, 6, 13, 18, 10, 7, 15, 12, 20, 9, 6, 14, 17, 8, 12, 19, 10, 5, 13, 16, 7, 11, 15, 9, 6, 12, 18, 8, 14, 10, 7, 13, 16, 9, 5, 11, 14, 8];
+// Human-sounding voices (Edge "Natural", Google, neural). Old offline voices like "Microsoft David" sound robotic.
+const isNatural = (v) => /natural|neural|online|google/i.test(v.name);
 const PAL = ["#FFB547", "#5B8DEF", "#4FD1A5", "#FF7A59", "#C08CF5"];
 const localDayKey = () => {
   const date = new Date();
@@ -481,6 +485,64 @@ function Reader() {
   }
   latest.current = { toggle, move };
 
+  // ---- voice control (mic orb / Ctrl+Space) ----
+  const voice = useVoice({
+    pause: () => { const was = playingRef.current; if (was) pause(); return was; },
+    resume: () => play(pos.current.page, pos.current.idx, pos.current.chunk),
+    voice: { rate: rateRef.current, voiceURI: voiceRef.current },
+    dictate: (t) => { const b = draftRef.current.body; editDraft({ body: b + (b && !/\s$/.test(b) ? " " : "") + t }); },
+    command: async ({ cmd, arg }) => {
+      const { page: p, idx: i } = pos.current;
+      if (cmd === "pause") return pause();
+      if (cmd === "resume") return play(p, i, pos.current.chunk);
+      if (cmd === "rate") { const r = nextRate(rateRef.current, arg); changeRate(r); return `Speed ${r}x`; }
+      if (cmd === "page") { await goPage(arg); return `Page ${pos.current.page}`; }
+      if (cmd === "minute") return "Minutes work in sermons. Here, say “go to page 12”.";
+      if (cmd === "theme") { chooseTheme(arg); return `${arg[0].toUpperCase() + arg.slice(1)} mode`; }
+      if (cmd === "bookmark") {
+        await putNote({ id: newNoteId(), document_id: id, page: p, paragraph: i, body: "🔖 Bookmark", updated_at: new Date().toISOString(), deleted: false });
+        await refreshNotes();
+        clearTimeout(syncTimer.current);
+        syncTimer.current = setTimeout(runSync, 1500);
+        return `Bookmarked page ${p}, paragraph ${i + 1}`;
+      }
+      if (cmd === "paragraph") { await move(arg); return `Paragraph ${pos.current.idx + 1}`; }
+      if (cmd === "skip") { await move(Math.sign(arg)); return arg < 0 ? "Back one paragraph" : "Forward one paragraph"; }
+      if (cmd === "turn") { await goPage(p + arg, arg); return `Page ${pos.current.page}`; }
+      if (cmd === "notes") {
+        if (!arg) { await closeNotes(); return "Notes closed"; }
+        openNotes();
+        setShowAll(true);
+        return "Your notes";
+      }
+      if (cmd === "lastNote") {
+        const last = [...notes].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))[0];
+        if (!last) return "There are no notes in this book yet.";
+        await openNote(last); // so "delete that note" acts on it
+        await jump(last.page, last.paragraph ?? 0);
+        return `Note on page ${last.page}`;
+      }
+      if (cmd === "deleteNote") {
+        if (!draftRef.current.id) return "Open a note first, then say “delete that note”.";
+        await deleteDraft();
+        return "Note deleted";
+      }
+      if (cmd === "note") {
+        await startNewNote();
+        setPanel("notes");
+        return editDraft({ paragraph: i });
+      }
+      if (cmd === "ask") {
+        const context = [];
+        for (let q = Math.max(1, p - 2); q <= Math.min(numRef.current, p + 2); q++) {
+          for (const t of await getParas(q)) context.push(`[page ${q}] ${t}`);
+        }
+        const r = await api("/api/assistant/ask", { method: "POST", body: { document_id: id, question: arg, context } });
+        return r.answer;
+      }
+    },
+  });
+
   // ---- notes (written to this device first, synced when online) ----
   async function refreshNotes() {
     try { setNotes(await listNotes(id)); } catch {}
@@ -591,7 +653,9 @@ function Reader() {
       setVoices(list);
       if (!list.find((v) => v.voiceURI === voiceRef.current)) {
         const lang = (navigator.language || "en").toLowerCase();
-        const pick = list.find((v) => v.lang.toLowerCase() === lang) || list.find((v) => v.lang.toLowerCase().startsWith(lang.slice(0, 2))) || list[0];
+        const exact = (v) => v.lang.toLowerCase() === lang, near = (v) => v.lang.toLowerCase().startsWith(lang.slice(0, 2));
+        const pick = list.find((v) => exact(v) && isNatural(v)) || list.find((v) => near(v) && isNatural(v))
+          || list.find(exact) || list.find(near) || list[0];
         voiceRef.current = pick.voiceURI;
         setVoiceURI(pick.voiceURI);
       }
@@ -749,7 +813,8 @@ function Reader() {
   // ---- derived values ----
   const voiceList = useMemo(() => {
     const lang = (typeof navigator !== "undefined" ? navigator.language : "en").slice(0, 2).toLowerCase();
-    return [...voices].sort((a, b) => Number(b.lang.toLowerCase().startsWith(lang)) - Number(a.lang.toLowerCase().startsWith(lang)));
+    const rank = (v) => 2 * Number(v.lang.toLowerCase().startsWith(lang)) + Number(isNatural(v)); // your language, natural first
+    return [...voices].sort((a, b) => rank(b) - rank(a));
   }, [voices]);
   const voiceName = (v) => v.name.replace(/^Microsoft\s+/, "").replace(/\s+-\s+.*$/, "").replace(/\s*\(.*\)\s*$/, "");
   const currentVoice = voices.find((v) => v.voiceURI === voiceURI);
@@ -836,12 +901,15 @@ function Reader() {
               <Icon size={24} fill d={playing ? P.pause : P.play} />
             </button>
             <button className="ib" style={{ width: 40, height: 40 }} aria-label="Next paragraph" onClick={() => move(1)}><Icon size={21} d={P.next} /></button>
+            <button className={"orb sm " + voice.state} aria-label="Voice command (Ctrl+Space)" title="Voice command (Ctrl+Space)" onClick={voice.toggle} disabled={status !== "ready"}><Icon size={20} d={P.mic} /></button>
           </div>
+          {voice.caption && <div className="vcap" role="status" aria-live="polite">{voice.caption}</div>}
           {!trayCompact && (
             <div className="pills">
               <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.speed} />{rate}x</button>
               <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.mic} />{currentVoice ? voiceName(currentVoice) : "Voice"}</button>
               <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.moon} />{sleepMin ? `${sleepMin}m` : "Sleep"}</button>
+              <button className={"pill" + (voice.handsFree ? " on" : "")} aria-pressed={voice.handsFree} title="Say “Hey Nasoma”, then a command" onClick={() => voice.setHandsFree(!voice.handsFree)}><Icon size={14} d={P.mic} />{voice.handsFree ? "Hands-free on" : "Hands-free"}</button>
             </div>
           )}
         </div>
@@ -867,12 +935,13 @@ function Reader() {
             <div className="nc pinned">
               <span style={{ color: "var(--accent-text)", flex: "none", marginTop: 2 }}><Icon size={18} d={P.pin} /></span>
               <div>
-                <b style={{ color: "var(--accent-text)" }}>Pinned to paragraph {draft.paragraph + 1}</b>
+                <b style={{ color: "var(--accent-text)" }}>Pinned to page {draft.page}, paragraph {draft.paragraph + 1}</b>
                 {pinnedText && <div className="muted">{pinnedText.slice(0, 90)}…</div>}
               </div>
             </div>
           )}
           <textarea className="noteArea" value={draft.body} onChange={(e) => editDraft({ body: e.target.value })} placeholder="Write a note. It saves on this device as you type, even offline." aria-label="Note text" />
+          {voice.live && <div className="live" aria-live="polite">{voice.live}…</div>}
           <div className="tools">
             {(!draft.id || draft.page === page) && (
               <button className={"tool" + (draft.paragraph != null ? " on" : "")} onClick={() => editDraft({ paragraph: draft.paragraph != null ? null : idx })}>Pin</button>
@@ -924,7 +993,7 @@ function Reader() {
                 <div key={v.voiceURI} className={"vc" + (sel ? " sel" : "")}>
                   <button className="vsel" aria-pressed={sel} onClick={() => changeVoice(v.voiceURI)}>
                     <span className="av" style={{ background: PAL[n % PAL.length] }}>{(name[0] || "?").toUpperCase()}</span>
-                    <span className="vt"><b>{name}</b><span className="muted sm">{v.lang}{v.localService ? " · On device" : " · Needs internet"}</span></span>
+                    <span className="vt"><b>{name}</b><span className="muted sm">{v.lang}{isNatural(v) ? " · Natural" : ""}{v.localService ? " · On device" : " · Needs internet"}</span></span>
                   </button>
                   <button className="pv" aria-label={`Preview ${name}`} onClick={() => previewVoice(v)}><Icon size={16} fill d={P.play} /></button>
                 </div>

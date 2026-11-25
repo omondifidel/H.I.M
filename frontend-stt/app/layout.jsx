@@ -14,7 +14,7 @@ export const metadata = {
 };
 export const viewport = { width: "device-width", initialScale: 1, themeColor: "#FFFFFF", colorScheme: "light" };
 
-const themeScript = `try{var t=localStorage.getItem("theme")||"light";var bg={light:"#FFFFFF",bluewhite:"#F3F8FD",greenpurple:"#F3F7F2",dark:"#17151A"}[t]||"#FFFFFF";document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=(t==="dark"?"dark":"only light");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",bg)}catch(e){}`;
+const themeScript = `try{var t=localStorage.getItem("theme")||"light";var bg={light:"#FFFFFF",bluewhite:"#F3F8FD",greenpurple:"#F3F7F2",dark:"#17151A",sepia:"#F4ECD8"}[t]||"#FFFFFF";document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=(t==="dark"?"dark":"only light");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",bg)}catch(e){}`;
 
 export default function RootLayout({ children }) {
   return (

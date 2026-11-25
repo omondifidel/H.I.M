@@ -11,3 +11,4 @@ frontend/.env.local
 **/.next
 **/out
 **/.env.local
+progress.md

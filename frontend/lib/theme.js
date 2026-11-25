@@ -3,6 +3,7 @@ export const THEMES = [
   { id: "bluewhite", name: "Sky & Slate", description: "Airy coastal blue and crisp white surfaces", bg: "#F3F8FD" },
   { id: "greenpurple", name: "Mint & Lavender", description: "Soft botanical mint with pastel lavender glow", bg: "#F3F7F2" },
   { id: "dark", name: "Midnight Ink", description: "Deep charcoal surfaces easy on the eyes at night", bg: "#17151A" },
+  { id: "sepia", name: "Sepia Page", description: "Warm paper tones for long reading", bg: "#F4ECD8" },
 ];
 
 export function getTheme() {
