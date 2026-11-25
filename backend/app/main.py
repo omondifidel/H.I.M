@@ -16,6 +16,7 @@ from app.modules.admin.router import router as admin_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.assistant.router import router as assistant_router
 from app.modules.search import index as search_index
+from app.modules.search import vectors as search_vectors
 from app.modules.search.router import router as search_router
 from app.modules.auth import service as auth_service
 from app.modules.auth.router import router as auth_router
@@ -39,6 +40,7 @@ def init_database() -> None:
     settings.storage_dir.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(engine)
     run_migrations(engine)
+    search_vectors.setup(engine)  # meaning search, where the database has pgvector
     with SessionLocal() as db:
         auth_service.sync_admins(db)
 
@@ -49,6 +51,7 @@ def create_app() -> FastAPI:
     async def lifespan(_: FastAPI):
         worker.start()  # the background thread that transcribes recordings
         threading.Thread(target=search_index.backfill, daemon=True).start()  # index anything not indexed yet
+        search_vectors.start_worker()  # embed new and changed passages for meaning search
         yield
         worker.stop()
 
