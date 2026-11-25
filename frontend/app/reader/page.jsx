@@ -250,6 +250,13 @@ function PageRail({ pdf, numPages, currentPage, onSelect }) {
   );
 }
 
+const HUMAN_VOICES = [
+  { id: "ann", name: "Ann", accent: "US · Warm & natural", color: "#2563EB" },
+  { id: "mary", name: "Mary", accent: "UK · Calm & clear", color: "#7C3AED" },
+  { id: "brian", name: "Brian", accent: "US · Deep & steady", color: "#D97706" },
+  { id: "andrew", name: "Andrew", accent: "US · Storyteller", color: "#0D9488" },
+];
+
 function Reader() {
   const sp = useSearchParams();
   const id = sp.get("id");
@@ -286,8 +293,7 @@ function Reader() {
   const [paras, setParas] = useState([]);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
-  const [voices, setVoices] = useState([]);
-  const [voiceURI, setVoiceURI] = useState("");
+  const [voiceURI, setVoiceURI] = useState("ann");
   const [hl, setHl] = useState(true);
   const [panel, setPanel] = useState(null); // null | "notes" | "voice"
   const [sleepMin, setSleepMin] = useState(0);
@@ -298,7 +304,9 @@ function Reader() {
   const run = useRef(0);
   const pos = useRef({ page: 1, idx: 0, chunk: 0 });
   const rateRef = useRef(1);
-  const voiceRef = useRef("");
+  const voiceRef = useRef("ann");
+  const audioRef = useRef(null);
+  const audioUrlRef = useRef(null);
   const numRef = useRef(0);
   const playingRef = useRef(false);
   const saveTimer = useRef(null);
@@ -351,11 +359,55 @@ function Reader() {
     if (ps) setParas(ps);
   }
 
-  // ---- speech ----
+  // ---- speech (4 Human Neural Voices + offline browser fallback) ----
+  function stopAudio() {
+    if (audioRef.current) {
+      try { audioRef.current.pause(); audioRef.current.src = ""; } catch {}
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      try { URL.revokeObjectURL(audioUrlRef.current); } catch {}
+      audioUrlRef.current = null;
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
+  }
+
+  function speakFallback(text, myRun, onDone) {
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+    if (!synth) {
+      setPlay(false);
+      setError("Speech playback is unavailable on this browser.");
+      return;
+    }
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = rateRef.current;
+    const list = synth.getVoices();
+    const pref = voiceRef.current === "mary" ? "en-gb" : "en-us";
+    const v = list.find((x) => x.lang.toLowerCase().startsWith(pref)) || list[0];
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.onend = () => { if (myRun === run.current) onDone(); };
+    u.onerror = (e) => {
+      if (myRun !== run.current || e.error === "interrupted" || e.error === "canceled") return;
+      setPlay(false);
+    };
+    synth.speak(u);
+  }
+
+  async function fetchNeuralBlob(text, voiceKey) {
+    const res = await fetch("/api/tts/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice: voiceKey || "ann" }),
+    });
+    if (!res.ok) throw new Error("Neural TTS failed");
+    return await res.blob();
+  }
+
   async function play(p, i, chunkNo = 0) {
-    const synth = window.speechSynthesis;
     const myRun = ++run.current;
-    synth.cancel();
+    stopAudio();
     setPlay(true);
     setError("");
     let ps = await getParas(p);
@@ -375,32 +427,39 @@ function Reader() {
     show(p, i, ps);
     pos.current.chunk = chunkNo;
     setChunk(chunkNo);
-    if (p < numRef.current) getParas(p + 1).catch(() => {}); // prefetch next page
+    if (p < numRef.current) getParas(p + 1).catch(() => {});
 
     const chunks = splitChunks(ps[i]);
     const text = chunks[chunkNo];
     if (text == null) return play(p, i + 1, 0);
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = rateRef.current;
-    const v = synth.getVoices().find((x) => x.voiceURI === voiceRef.current);
-    if (v) { u.voice = v; u.lang = v.lang; }
-    u.onend = () => {
+
+    const advance = () => {
       if (myRun !== run.current) return;
       if (chunkNo + 1 < chunks.length) play(p, i, chunkNo + 1);
       else play(p, i + 1, 0);
     };
-    u.onerror = (e) => {
+
+    try {
+      const blob = await fetchNeuralBlob(text, voiceRef.current);
       if (myRun !== run.current) return;
-      if (e.error === "interrupted" || e.error === "canceled") return;
-      setPlay(false);
-      setError("Speech stopped: " + (e.error || "unknown error"));
-    };
-    setTimeout(() => { if (myRun === run.current) synth.speak(u); }, 40);
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
+      const audio = new Audio(url);
+      audio.playbackRate = rateRef.current;
+      audioRef.current = audio;
+      audio.onended = advance;
+      audio.onerror = () => {
+        if (myRun === run.current) speakFallback(text, myRun, advance);
+      };
+      await audio.play();
+    } catch {
+      if (myRun === run.current) speakFallback(text, myRun, advance);
+    }
   }
 
   function pause() {
     run.current++;
-    window.speechSynthesis.cancel();
+    stopAudio();
     setPlay(false);
   }
 
@@ -452,21 +511,33 @@ function Reader() {
     rateRef.current = r;
     setRate(r);
     localStorage.setItem("tts:rate", String(r));
+    if (audioRef.current) {
+      audioRef.current.playbackRate = r;
+    } else if (playingRef.current) {
+      play(pos.current.page, pos.current.idx, pos.current.chunk);
+    }
+  }
+  function changeVoice(id) {
+    voiceRef.current = id;
+    setVoiceURI(id);
+    localStorage.setItem("tts:voice", id);
     if (playingRef.current) play(pos.current.page, pos.current.idx, pos.current.chunk);
   }
-  function changeVoice(uri) {
-    voiceRef.current = uri;
-    setVoiceURI(uri);
-    localStorage.setItem("tts:voice", uri);
-    if (playingRef.current) play(pos.current.page, pos.current.idx, pos.current.chunk);
-  }
-  function previewVoice(v) {
+  async function previewVoice(v) {
     pause();
-    const u = new SpeechSynthesisUtterance("This is how I will read your document.");
-    u.voice = v;
-    u.lang = v.lang;
-    u.rate = rateRef.current;
-    setTimeout(() => window.speechSynthesis.speak(u), 60);
+    const myRun = ++run.current;
+    try {
+      const blob = await fetchNeuralBlob(`Hello, I'm ${v.name}. This is how I will read your document.`, v.id);
+      if (myRun !== run.current) return;
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
+      const audio = new Audio(url);
+      audio.playbackRate = rateRef.current;
+      audioRef.current = audio;
+      await audio.play();
+    } catch {
+      if (myRun === run.current) speakFallback(`Hello, I'm ${v.name}.`, myRun, () => {});
+    }
   }
   function changeHl(v) {
     setHl(v);
@@ -581,24 +652,12 @@ function Reader() {
     rateRef.current = r;
     setRate(r);
     setHl(localStorage.getItem("ui:hl") !== "0");
-    voiceRef.current = localStorage.getItem("tts:voice") || "";
-    setVoiceURI(voiceRef.current);
-    const synth = window.speechSynthesis;
-    if (!synth) { setError("This browser does not support reading aloud."); return; }
-    const load = () => {
-      const list = synth.getVoices();
-      if (!list.length) return;
-      setVoices(list);
-      if (!list.find((v) => v.voiceURI === voiceRef.current)) {
-        const lang = (navigator.language || "en").toLowerCase();
-        const pick = list.find((v) => v.lang.toLowerCase() === lang) || list.find((v) => v.lang.toLowerCase().startsWith(lang.slice(0, 2))) || list[0];
-        voiceRef.current = pick.voiceURI;
-        setVoiceURI(pick.voiceURI);
-      }
-    };
-    load();
-    synth.addEventListener("voiceschanged", load);
-    return () => synth.removeEventListener("voiceschanged", load);
+    const rawSaved = localStorage.getItem("tts:voice") || "ann";
+    const mapped = rawSaved === "aria" ? "ann" : rawSaved === "sonia" ? "mary" : rawSaved;
+    const valid = HUMAN_VOICES.some((v) => v.id === mapped) ? mapped : "ann";
+    voiceRef.current = valid;
+    setVoiceURI(valid);
+    return () => stopAudio();
   }, []);
 
   function chooseTheme(value) {
@@ -747,12 +806,7 @@ function Reader() {
   }, [title]);
 
   // ---- derived values ----
-  const voiceList = useMemo(() => {
-    const lang = (typeof navigator !== "undefined" ? navigator.language : "en").slice(0, 2).toLowerCase();
-    return [...voices].sort((a, b) => Number(b.lang.toLowerCase().startsWith(lang)) - Number(a.lang.toLowerCase().startsWith(lang)));
-  }, [voices]);
-  const voiceName = (v) => v.name.replace(/^Microsoft\s+/, "").replace(/\s+-\s+.*$/, "").replace(/\s*\(.*\)\s*$/, "");
-  const currentVoice = voices.find((v) => v.voiceURI === voiceURI);
+  const currentVoice = HUMAN_VOICES.find((v) => v.id === voiceURI) || HUMAN_VOICES[0];
   const pageNotes = notes.filter((n) => n.page === page);
   const syncLabel = { saved: "Saved on device", syncing: "Syncing...", synced: "Saved and synced", offline: "Offline: saved on device" }[syncState];
   const pct = paras.length ? Math.round(((idx + 1) / paras.length) * 100) : 0;
@@ -840,7 +894,7 @@ function Reader() {
           {!trayCompact && (
             <div className="pills">
               <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.speed} />{rate}x</button>
-              <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.mic} />{currentVoice ? voiceName(currentVoice) : "Voice"}</button>
+              <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.mic} />{currentVoice.name}</button>
               <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.moon} />{sleepMin ? `${sleepMin}m` : "Sleep"}</button>
             </div>
           )}
@@ -898,48 +952,65 @@ function Reader() {
       )}
 
       {panel === "voice" && (
-        <div className="sheet" role="dialog" aria-label="Voice and speed">
-          <div className="grab" style={{ margin: "0 auto" }} />
-          <div className="row between">
-            <h2 className="sh">Voice and speed</h2>
-            <button className="ib" aria-label="Close" onClick={() => setPanel(null)}><Icon d={P.close} /></button>
+        <div className={"voice-pop" + (trayCompact ? " tray-min-mode" : "")} role="dialog" aria-label="Voice and speed">
+          <div className="vp-head">
+            <h2 className="vp-title">Voice & speed</h2>
+            <button className="ib" style={{ width: 32, height: 32 }} aria-label="Close" onClick={() => setPanel(null)}><Icon size={17} d={P.close} /></button>
           </div>
-          <div>
-            <div className="bigrate">{rate}<span>x</span></div>
-            <div className="muted sm" style={{ textAlign: "center", marginTop: 4 }}>About {Math.round(rate * 150)} words per minute</div>
+
+          <div className="vp-rate-box">
+            <div>
+              <div className="vp-rate-val">{rate}x</div>
+              <div className="muted" style={{ fontSize: 11.5 }}>~{Math.round(rate * 155)} words/min</div>
+            </div>
+            <input
+              type="range"
+              min="0.75"
+              max="2.25"
+              step="0.25"
+              value={rate}
+              style={{ width: 170, accentColor: "var(--accent)" }}
+              onChange={(e) => changeRate(parseFloat(e.target.value))}
+              aria-label="Reading speed"
+            />
           </div>
-          <input type="range" min="0.5" max="3" step="0.25" value={rate} onChange={(e) => changeRate(parseFloat(e.target.value))} aria-label="Reading speed" />
-          <div className="presets">
+
+          <div className="vp-presets">
             {[0.75, 1, 1.25, 1.5, 2].map((r) => (
-              <button key={r} className={"pre" + (r === rate ? " on" : "")} onClick={() => changeRate(r)}>{r}x</button>
+              <button key={r} type="button" className={"vp-pre" + (r === rate ? " on" : "")} onClick={() => changeRate(r)}>{r}x</button>
             ))}
           </div>
-          <div className="lbl">VOICE</div>
-          <div className="grow vlist">
-            {voiceList.length === 0 && <div className="muted sm">No voices found on this device.</div>}
-            {voiceList.map((v, n) => {
-              const sel = v.voiceURI === voiceURI;
-              const name = voiceName(v);
+
+          <div className="lbl" style={{ fontSize: 11 }}>NATURAL VOICES</div>
+          <div className="vp-vgrid">
+            {HUMAN_VOICES.map((v) => {
+              const sel = v.id === voiceURI;
               return (
-                <div key={v.voiceURI} className={"vc" + (sel ? " sel" : "")}>
-                  <button className="vsel" aria-pressed={sel} onClick={() => changeVoice(v.voiceURI)}>
-                    <span className="av" style={{ background: PAL[n % PAL.length] }}>{(name[0] || "?").toUpperCase()}</span>
-                    <span className="vt"><b>{name}</b><span className="muted sm">{v.lang}{v.localService ? " · On device" : " · Needs internet"}</span></span>
+                <div key={v.id} className={"vp-vc" + (sel ? " sel" : "")}>
+                  <button type="button" className="vp-vsel" aria-pressed={sel} onClick={() => changeVoice(v.id)}>
+                    <span className="vp-av" style={{ background: v.color }}>{v.name[0]}</span>
+                    <span className="vp-vt"><b>{v.name}</b><span>{v.accent}</span></span>
                   </button>
-                  <button className="pv" aria-label={`Preview ${name}`} onClick={() => previewVoice(v)}><Icon size={16} fill d={P.play} /></button>
+                  <button type="button" className="vp-pv" aria-label={`Preview ${v.name}`} onClick={() => previewVoice(v)}>
+                    <Icon size={12} fill d={P.play} />
+                  </button>
                 </div>
               );
             })}
           </div>
-          <div className="row between">
-            <span style={{ fontSize: 15, fontWeight: 500 }}>Highlight the spoken sentence</span>
-            <button className={"sw" + (hl ? " on" : "")} role="switch" aria-checked={hl} aria-label="Highlight the spoken sentence" onClick={() => changeHl(!hl)}><i /></button>
+
+          <div className="vp-row">
+            <span>Highlight spoken sentence</span>
+            <button type="button" className={"sw" + (hl ? " on" : "")} role="switch" aria-checked={hl} aria-label="Highlight the spoken sentence" onClick={() => changeHl(!hl)}><i /></button>
           </div>
-          <div className="row between">
-            <span style={{ fontSize: 15, fontWeight: 500 }}>Sleep timer</span>
-            <div className="row" style={{ gap: 6 }}>
+
+          <div className="vp-row">
+            <span>Sleep timer</span>
+            <div className="row" style={{ gap: 5 }}>
               {[0, 15, 30, 60].map((m) => (
-                <button key={m} className={"chip sm" + (sleepMin === m ? " on" : "")} onClick={() => setSleep(m)}>{m === 0 ? "Off" : `${m}m`}</button>
+                <button key={m} type="button" className={"chip sm" + (sleepMin === m ? " on" : "")} style={{ height: 28, padding: "0 9px", fontSize: 11.5 }} onClick={() => setSleep(m)}>
+                  {m === 0 ? "Off" : `${m}m`}
+                </button>
               ))}
             </div>
           </div>
