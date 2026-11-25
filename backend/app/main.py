@@ -13,6 +13,7 @@ from app.core.errors import AppError
 from app.core.migrations import run_migrations
 from app.modules.admin.router import router as admin_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.assistant.router import router as assistant_router
 from app.modules.auth import service as auth_service
 from app.modules.auth.router import router as auth_router
 from app.modules.library.router import router as library_router
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(transcription_router)
     app.include_router(admin_router)
     app.include_router(notifications_router)
+    app.include_router(assistant_router)
 
     @app.get("/api/health")
     def health():

@@ -8,6 +8,8 @@ import { listNotes, newNoteId, putNote, removeNote, syncNotes } from "../../lib/
 import { extractParagraphs, loadPdfjs } from "../../lib/pdfText";
 import { applyTheme, getTheme, THEMES } from "../../lib/theme";
 import NotificationBell from "../../components/NotificationBell";
+import { useVoice } from "../../lib/useVoice";
+import { nextRate } from "../../lib/voice";
 
 /** Split a paragraph into short chunks so browsers never cut long speech off. */
 function splitChunks(text, max = 220) {
@@ -552,6 +554,64 @@ function Reader() {
   }
   latest.current = { toggle, move };
 
+  // ---- voice control (mic orb / Ctrl+Space) ----
+  const voice = useVoice({
+    pause: () => { const was = playingRef.current; if (was) pause(); return was; },
+    resume: () => play(pos.current.page, pos.current.idx, pos.current.chunk),
+    voice: { rate: rateRef.current, voiceURI: voiceRef.current },
+    dictate: (t) => { const b = draftRef.current.body; editDraft({ body: b + (b && !/\s$/.test(b) ? " " : "") + t }); },
+    command: async ({ cmd, arg }) => {
+      const { page: p, idx: i } = pos.current;
+      if (cmd === "pause") return pause();
+      if (cmd === "resume") return play(p, i, pos.current.chunk);
+      if (cmd === "rate") { const r = nextRate(rateRef.current, arg); changeRate(r); return `Speed ${r}x`; }
+      if (cmd === "page") { await goPage(arg); return `Page ${pos.current.page}`; }
+      if (cmd === "minute") return "Minutes work in sermons. Here, say “go to page 12”.";
+      if (cmd === "theme") { chooseTheme(arg); return `${arg[0].toUpperCase() + arg.slice(1)} mode`; }
+      if (cmd === "bookmark") {
+        await putNote({ id: newNoteId(), document_id: id, page: p, paragraph: i, body: "🔖 Bookmark", updated_at: new Date().toISOString(), deleted: false });
+        await refreshNotes();
+        clearTimeout(syncTimer.current);
+        syncTimer.current = setTimeout(runSync, 1500);
+        return `Bookmarked page ${p}, paragraph ${i + 1}`;
+      }
+      if (cmd === "paragraph") { await move(arg); return `Paragraph ${pos.current.idx + 1}`; }
+      if (cmd === "skip") { await move(Math.sign(arg)); return arg < 0 ? "Back one paragraph" : "Forward one paragraph"; }
+      if (cmd === "turn") { await goPage(p + arg, arg); return `Page ${pos.current.page}`; }
+      if (cmd === "notes") {
+        if (!arg) { await closeNotes(); return "Notes closed"; }
+        openNotes();
+        setShowAll(true);
+        return "Your notes";
+      }
+      if (cmd === "lastNote") {
+        const last = [...notes].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))[0];
+        if (!last) return "There are no notes in this book yet.";
+        await openNote(last); // so "delete that note" acts on it
+        await jump(last.page, last.paragraph ?? 0);
+        return `Note on page ${last.page}`;
+      }
+      if (cmd === "deleteNote") {
+        if (!draftRef.current.id) return "Open a note first, then say “delete that note”.";
+        await deleteDraft();
+        return "Note deleted";
+      }
+      if (cmd === "note") {
+        await startNewNote();
+        setPanel("notes");
+        return editDraft({ paragraph: i });
+      }
+      if (cmd === "ask") {
+        const context = [];
+        for (let q = Math.max(1, p - 2); q <= Math.min(numRef.current, p + 2); q++) {
+          for (const t of await getParas(q)) context.push(`[page ${q}] ${t}`);
+        }
+        const r = await api("/api/assistant/ask", { method: "POST", body: { document_id: id, question: arg, context } });
+        return r.answer;
+      }
+    },
+  });
+
   // ---- notes (written to this device first, synced when online) ----
   async function refreshNotes() {
     try { setNotes(await listNotes(id)); } catch {}
@@ -890,12 +950,15 @@ function Reader() {
               <Icon size={24} fill d={playing ? P.pause : P.play} />
             </button>
             <button className="ib" style={{ width: 40, height: 40 }} aria-label="Next paragraph" onClick={() => move(1)}><Icon size={21} d={P.next} /></button>
+            <button className={"orb sm " + voice.state} aria-label="Voice command (Ctrl+Space)" title="Voice command (Ctrl+Space)" onClick={voice.toggle} disabled={status !== "ready"}><Icon size={20} d={P.mic} /></button>
           </div>
+          {voice.caption && <div className="vcap" role="status" aria-live="polite">{voice.caption}</div>}
           {!trayCompact && (
             <div className="pills">
               <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.speed} />{rate}x</button>
               <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.mic} />{currentVoice.name}</button>
               <button className="pill" onClick={() => setPanel("voice")}><Icon size={14} d={P.moon} />{sleepMin ? `${sleepMin}m` : "Sleep"}</button>
+              <button className={"pill" + (voice.handsFree ? " on" : "")} aria-pressed={voice.handsFree} title="Say “Hey Nasoma”, then a command" onClick={() => voice.setHandsFree(!voice.handsFree)}><Icon size={14} d={P.mic} />{voice.handsFree ? "Hands-free on" : "Hands-free"}</button>
             </div>
           )}
         </div>
@@ -921,12 +984,13 @@ function Reader() {
             <div className="nc pinned">
               <span style={{ color: "var(--accent-text)", flex: "none", marginTop: 2 }}><Icon size={18} d={P.pin} /></span>
               <div>
-                <b style={{ color: "var(--accent-text)" }}>Pinned to paragraph {draft.paragraph + 1}</b>
+                <b style={{ color: "var(--accent-text)" }}>Pinned to page {draft.page}, paragraph {draft.paragraph + 1}</b>
                 {pinnedText && <div className="muted">{pinnedText.slice(0, 90)}…</div>}
               </div>
             </div>
           )}
           <textarea className="noteArea" value={draft.body} onChange={(e) => editDraft({ body: e.target.value })} placeholder="Write a note. It saves on this device as you type, even offline." aria-label="Note text" />
+          {voice.live && <div className="live" aria-live="polite">{voice.live}…</div>}
           <div className="tools">
             {(!draft.id || draft.page === page) && (
               <button className={"tool" + (draft.paragraph != null ? " on" : "")} onClick={() => editDraft({ paragraph: draft.paragraph != null ? null : idx })}>Pin</button>

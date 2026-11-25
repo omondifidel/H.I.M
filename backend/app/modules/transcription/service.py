@@ -146,7 +146,8 @@ def transcript(db: Session, user: User, job_id: str) -> TranscriptOut:
         raise BadRequest("This transcription is not finished yet")
     segments = job.segments or []
     return TranscriptOut(id=job.id, title=job.title, duration=job.duration,
-                         segments=[Segment(**s) for s in segments], paragraphs=_paragraphs(segments))
+                         segments=[Segment(**s) for s in segments], paragraphs=_paragraphs(segments),
+                         notes=job.notes or [])
 
 
 def patch(db: Session, user: User, job_id: str, data: TranscriptPatch) -> TranscriptOut:
@@ -160,6 +161,8 @@ def patch(db: Session, user: User, job_id: str, data: TranscriptPatch) -> Transc
             raise Invalid("Too many segments")
         job.segments = [s.model_dump() for s in data.segments]
         job.text = merge.full_text(job.segments)
+    if data.notes is not None:
+        job.notes = [n.model_dump() for n in data.notes]
     db.commit()
     return transcript(db, user, job_id) if job.status == "done" else TranscriptOut(
         id=job.id, title=job.title, duration=job.duration, segments=[], paragraphs=[])

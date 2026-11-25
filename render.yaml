@@ -23,6 +23,8 @@ services:
         sync: false          # your free key from console.groq.com, set in the Render dashboard
       - key: TRANSCRIBE_ENGINE
         value: groq
+      - key: GROQ_CHAT_MODEL
+        value: openai/gpt-oss-120b   # voice Q&A model
       - key: MAX_AUDIO_MB
         value: "600"
       - key: STORAGE_BACKEND

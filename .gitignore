@@ -14,3 +14,4 @@ frontend/.env.local
 # Local runtime storage & SQLite test DB
 backend/storage/
 local_ui_test.db
+progress.md

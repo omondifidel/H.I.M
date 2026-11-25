@@ -38,6 +38,7 @@ class Settings:
     transcribe_engine: str = "groq"          # "groq" or "openai"
     groq_api_key: str = ""
     groq_model: str = "whisper-large-v3"
+    groq_chat_model: str = "openai/gpt-oss-120b"  # voice Q&A
     openai_api_key: str = ""
     openai_model: str = "whisper-1"
     max_audio_bytes: int = 600 * 1024 * 1024
@@ -68,6 +69,7 @@ def load_settings() -> Settings:
         transcribe_engine=os.environ.get("TRANSCRIBE_ENGINE", "groq").strip().lower(),
         groq_api_key=os.environ.get("GROQ_API_KEY", "").strip(),
         groq_model=os.environ.get("GROQ_MODEL", "whisper-large-v3").strip(),
+        groq_chat_model=os.environ.get("GROQ_CHAT_MODEL", "openai/gpt-oss-120b").strip(),
         openai_api_key=os.environ.get("OPENAI_API_KEY", "").strip(),
         openai_model=os.environ.get("OPENAI_MODEL", "whisper-1").strip(),
         max_audio_bytes=int(os.environ.get("MAX_AUDIO_MB", "600")) * 1024 * 1024,
