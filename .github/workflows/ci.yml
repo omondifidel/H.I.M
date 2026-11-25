@@ -18,12 +18,12 @@ jobs:
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
       - name: Install backend dependencies
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements.txt pytest
       - name: Check Python syntax & run tests
         working-directory: backend
         run: |
           python -m compileall app
-          if [ -d "tests" ]; then pytest; fi
+          if [ -d "tests" ]; then python -m pytest -q; fi  # -m puts backend/ on the path so tests can import app
 
   frontend-builds:
     name: Build Static Frontends (${{ matrix.app }})
