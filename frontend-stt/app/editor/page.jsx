@@ -277,12 +277,6 @@ function Editor() {
     pending.current = { key: a.key, pos: a.text.length };
     commit(next, true);
   }
-
-  function prependTag(i, tag) {
-    const curText = parasRef.current[i].text.trim();
-    if (curText.startsWith(tag)) return;
-    commit(parasRef.current.map((p, j) => (j === i ? { ...p, text: `${tag} ${curText}`, edited: true } : p)), true);
-  }
   function remove(i) {
     commit(parasRef.current.filter((_, j) => j !== i), true);
   }
@@ -414,11 +408,6 @@ function Editor() {
               )}
               <Area value={p.text} label={`Paragraph at ${clock(p.start)}`} setRef={(el) => { areas.current[p.key] = el; }}
                 onChange={(e) => setText(i, e.target.value)} onKeyDown={(e) => onKey(i, e)} onFocus={() => { focusIdx.current = i; }} />
-              <div className="p-tags">
-                <button type="button" className="ptag" onClick={() => prependTag(i, "##")}>+ Heading</button>
-                <button type="button" className="ptag" onClick={() => prependTag(i, "[Scripture]")}>+ Scripture</button>
-                <button type="button" className="ptag" onClick={() => prependTag(i, "[Prayer]")}>+ Prayer</button>
-              </div>
             </div>
             <button className="px" aria-label={`Delete paragraph at ${clock(p.start)}`} onClick={() => remove(i)}>×</button>
           </div>
