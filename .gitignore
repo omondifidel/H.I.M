@@ -18,3 +18,6 @@ progress.md
 
 
 backend/storage/**
+
+# Root runtime storage
+storage/
