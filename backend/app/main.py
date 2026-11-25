@@ -12,6 +12,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.errors import AppError
 from app.core.migrations import run_migrations
 from app.modules.admin.router import router as admin_router
+from app.modules.notifications.router import router as notifications_router
 from app.modules.auth import service as auth_service
 from app.modules.auth.router import router as auth_router
 from app.modules.library.router import router as library_router
@@ -23,6 +24,7 @@ from app.modules.auth import models as _auth_models  # noqa: F401
 from app.modules.library import models as _library_models  # noqa: F401
 from app.modules.transcription import models as _transcription_models  # noqa: F401
 from app.modules.usage import models as _usage_models  # noqa: F401
+from app.modules.notifications import models as _notification_models  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[2]  # the project folder (contains backend/ and the frontends)
 
@@ -54,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(library_router)
     app.include_router(transcription_router)
     app.include_router(admin_router)
+    app.include_router(notifications_router)
 
     @app.get("/api/health")
     def health():
