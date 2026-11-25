@@ -58,9 +58,10 @@ const localDayKey = () => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
-function PdfPageView({ pdf, pageNumber }) {
+function PdfPageView({ pdf, pageNumber, paras, activeIdx, onSelectPara, onFail }) {
   const canvasRef = useRef(null);
   const [failed, setFailed] = useState(false);
+  const [bands, setBands] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -84,8 +85,59 @@ function PdfPageView({ pdf, pageNumber }) {
           transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0],
         });
         await renderTask.promise;
+
+        const tc = await page.getTextContent();
+        if (!active) return;
+        const lines = [];
+        for (const it of tc.items || []) {
+          const str = (it.str || "").trim();
+          if (!str) continue;
+          const tx = it.transform || [1, 0, 0, 1, 0, 0];
+          const [vx, vy] = viewport.convertToViewportPoint(tx[4], tx[5]);
+          const h = Math.max(10, Math.abs(tx[3]) * viewport.scale);
+          const w = Math.max(8, (it.width || 0) * viewport.scale);
+          const topPct = Math.max(0, Math.min(98, ((vy - h) / viewport.height) * 100));
+          const heightPct = Math.max(1.4, Math.min(100 - topPct, ((h + 4) / viewport.height) * 100));
+          const leftPct = Math.max(0, Math.min(95, (vx / viewport.width) * 100));
+          const rightPct = Math.max(leftPct + 2, Math.min(98, ((vx + w) / viewport.width) * 100));
+          const prev = lines[lines.length - 1];
+          if (prev && Math.abs(prev.vy - vy) < h * 0.55) {
+            prev.leftPct = Math.min(prev.leftPct, leftPct);
+            prev.rightPct = Math.max(prev.rightPct, rightPct);
+            prev.text += " " + str;
+          } else {
+            lines.push({ vy, topPct, heightPct, leftPct, rightPct, text: str });
+          }
+        }
+
+        const paraBands = [];
+        if (lines.length && paras?.length) {
+          let lineCursor = 0;
+          for (let i = 0; i < paras.length; i++) {
+            const pText = paras[i].replace(/\s+/g, " ").trim();
+            const startLine = Math.min(lineCursor, lines.length - 1);
+            let accLen = 0;
+            let endLine = startLine;
+            while (endLine < lines.length && accLen < pText.length * 0.85) {
+              accLen += lines[endLine].text.length + 1;
+              endLine++;
+            }
+            const slice = lines.slice(startLine, Math.max(startLine + 1, endLine));
+            lineCursor = Math.max(startLine + 1, endLine);
+            const top = Math.min(...slice.map((l) => l.topPct));
+            const bottom = Math.max(...slice.map((l) => l.topPct + l.heightPct));
+            const left = Math.max(2, Math.min(...slice.map((l) => l.leftPct)) - 1);
+            const right = Math.min(98, Math.max(...slice.map((l) => l.rightPct)) + 1);
+            paraBands.push({ idx: i, top, height: Math.max(2.2, bottom - top), left, width: Math.max(12, right - left) });
+          }
+        }
+        setBands(paraBands);
+        onFail?.(false);
       } catch {
-        if (active) setFailed(true);
+        if (active) {
+          setFailed(true);
+          onFail?.(true);
+        }
       }
     }
     setFailed(false);
@@ -94,11 +146,30 @@ function PdfPageView({ pdf, pageNumber }) {
       active = false;
       renderTask?.cancel();
     };
-  }, [pdf, pageNumber]);
+  }, [pdf, pageNumber, paras]);
 
   return (
-    <figure className="pdf-page">
-      {failed ? <figcaption className="muted sm">This page preview could not be displayed. The readable text is still available below.</figcaption> : <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} />}
+    <figure className="pdf-page" style={{ position: "relative" }}>
+      {failed ? (
+        <figcaption className="muted sm">This page preview could not be displayed. The readable text is shown below.</figcaption>
+      ) : (
+        <>
+          <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} />
+          <div className="pdf-hl-layer">
+            {bands.map((b) => (
+              <button
+                key={b.idx}
+                id={"p" + b.idx}
+                type="button"
+                aria-label={`Read from paragraph ${b.idx + 1}`}
+                className={"pdf-para-band" + (b.idx === activeIdx ? " on" : "")}
+                style={{ top: `${b.top}%`, height: `${b.height}%`, left: `${b.left}%`, width: `${b.width}%` }}
+                onClick={() => onSelectPara?.(b.idx)}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </figure>
   );
 }
@@ -652,7 +723,7 @@ function Reader() {
 
   // ---- keep the current paragraph in view ----
   useEffect(() => {
-    const el = document.querySelector(".rd.on .spk") || document.getElementById("p" + idx);
+    const el = document.querySelector(".pdf-para-band.on") || document.getElementById("p" + idx);
     if (!el) return;
     const target = window.innerHeight * (panel === "notes" ? 0.2 : 0.3);
     window.scrollBy({ top: el.getBoundingClientRect().top - target, behavior: "smooth" });
@@ -717,18 +788,12 @@ function Reader() {
         <main className={"rtext" + (panel === "notes" ? " pad" : "")}>
         {status === "loading" && <p className="muted">Opening your PDF...</p>}
         {error && <p className="err" role="alert">{error}</p>}
-        {status === "ready" && pdfRef.current && <PdfPageView pdf={pdfRef.current} pageNumber={page} />}
-        {paras.length === 0 && status === "ready" && !error && (
-          <p className="muted">This page has no readable text (a cover, a picture or a scanned page). Use the page arrows to jump to the next page with text.</p>
+        {status === "ready" && pdfRef.current && (
+          <PdfPageView pdf={pdfRef.current} pageNumber={page} paras={paras} activeIdx={idx} onSelectPara={(i) => jump(page, i)} />
         )}
-        {paras.length > 0 && <div className="readalong-label">READ ALONG <span>Tap any paragraph to start here</span></div>}
-        {paras.map((t, i) => (
-          <button key={i} id={"p" + i} type="button" className={"rd" + (i === idx ? " on" : "") + (i === idx && !hl ? " whole" : "")} onClick={() => jump(page, i)}>
-            {i === idx && hl
-              ? splitChunks(t).map((c, j) => <span key={j} className={j === chunk ? "spk" : ""}>{c}{" "}</span>)
-              : t}
-          </button>
-        ))}
+        {paras.length === 0 && status === "ready" && !error && (
+          <p className="muted" style={{ marginTop: 12 }}>This page has no readable text (a cover, a picture or a scanned page). Use the page arrows to jump to the next page with text.</p>
+        )}
         </main>
       </div>
 

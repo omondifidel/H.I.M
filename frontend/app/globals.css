@@ -936,3 +936,10 @@ body:has(.library-shell){background:var(--bg)}
   .sheet.notes-docked .noteArea{height:92px;font-size:14px;padding:10px 12px}
   .sheet.notes-docked .tool{height:32px;padding:0 10px;font-size:12px}
 }
+
+
+/* ---------- Direct PDF Page Paragraph Highlight Overlay ---------- */
+.pdf-hl-layer{position:absolute;inset:0;pointer-events:none}
+.pdf-para-band{position:absolute;pointer-events:auto;border:0;border-radius:6px;background:transparent;cursor:pointer;transition:background .18s,box-shadow .18s}
+.pdf-para-band:hover{background:rgba(59,130,246,.08)}
+.pdf-para-band.on{background:rgba(59,130,246,.16);box-shadow:inset 3px 0 0 var(--accent)}
