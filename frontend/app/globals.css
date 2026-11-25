@@ -1062,3 +1062,17 @@ body:has(.library-shell){background:var(--bg)}
 @media (prefers-reduced-motion: reduce){.orb.listen,.orb.dictate,.orb.think{animation:none}}
 .pill.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .right-tray .vcap{position:static;margin-top:10px;max-height:30vh}
+
+/* ---------- Deep Word Finder (search) + read-only sermon player ---------- */
+.deep-search .searchbox .btn{flex:none;padding:0 14px}
+.linkish{border:0;background:none;padding:0;color:var(--accent-text);text-decoration:underline;font:inherit;cursor:pointer}
+.nrow.hit{color:var(--text)}
+.nrow.hit:hover{border-color:var(--accent)}
+.hit-kind{color:var(--accent-text);font-weight:600}
+.hit-text{font-size:14px;line-height:1.55;margin-top:4px}
+.hit-text mark,.sermon-text mark{background:var(--hl2);color:inherit;border-radius:4px;padding:0 2px}
+.sermon-view{max-width:760px;padding-bottom:40px}
+.sermon-player{position:sticky;top:0;z-index:2;background:var(--bg);padding:12px 0;margin-top:12px;border-bottom:1px solid var(--line)}
+.spara{display:flex;gap:12px;align-items:flex-start;line-height:1.65;font-size:16px;padding:8px 10px;border-radius:12px;margin:4px 0}
+.spara .chip{flex:none;font-variant-numeric:tabular-nums}
+.spara.on{background:var(--hl)}
