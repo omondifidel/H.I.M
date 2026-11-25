@@ -1,7 +1,7 @@
 // Voice control: tap the mic orb / press Ctrl+Space, or turn on hands-free and say "Hey Nasoma".
 // The page decides what each command does. Kept identical in frontend/lib and frontend-stt/lib.
 import { useEffect, useRef, useState } from "react";
-import { afterWake, dictation, firstSentence, interpret, listen, parseCommand, sentence, speak, voiceSupported, wakeCommand } from "./voice";
+import { afterWake, dictation, firstSentence, interpret, wakeParts, listen, parseCommand, sentence, speak, voiceSupported, wakeCommand } from "./voice";
 
 /**
  * opts.pause()        stop playback, return true if it was playing (it resumes after the command)
@@ -17,11 +17,6 @@ const MIC_ERRORS = {
   network: "Couldn't reach the speech service. Check your internet and try again.",
   "no-speech": "I didn't hear anything. Tap the mic and speak right away.",
 };
-
-// Whisper path only: while waiting for "Hey Nasoma" over a voice reading aloud the mic never hears silence,
-// so it sends what it has every few seconds instead of every 30.
-// ponytail: a wake word split across two pieces is missed; overlap the pieces if that happens often
-const WAKE_MS = 6000;
 
 const HELP = "You can say: pause, resume, read faster or slower, go to page 12, go to minute 5, skip back 30 seconds, " +
   "next paragraph, bookmark this, dark, light or sepia mode, take a note, show my notes, or ask any question about what is open. " +
@@ -41,6 +36,7 @@ export function useVoice(opts) {
   const silence = useRef(null);
   const wakeTimer = useRef(null);
   const wakeNext = useRef(null);
+  const queued = useRef([]); // more commands said in the same breath, run one after another
   const setState = (s) => { stateRef.current = s; setStateRaw(s); };
 
   function finish(msg) {
@@ -49,8 +45,9 @@ export function useVoice(opts) {
     setLive("");
     setState("idle");
     if (msg) setCaption(msg);
+    if (queued.current.length) return run(queued.current.shift()); // playback stays paused until the last one
     if (resumeRef.current) { resumeRef.current = false; o.current.resume(); }
-    if (handsFreeRef.current) { clearTimeout(wakeTimer.current); wakeTimer.current = setTimeout(wake, 400); }
+    if (handsFreeRef.current) { clearTimeout(wakeTimer.current); wakeTimer.current = setTimeout(wake, 50); } // the mic stays open, so nothing said meanwhile is lost
   }
 
   /** Hands-free: listens in the background for "Hey Nasoma" (Chrome ends long sessions, so it restarts). */
@@ -60,13 +57,14 @@ export function useVoice(opts) {
     setState("wake");
     const stop = listen({
       continuous: true,
-      maxMs: WAKE_MS,
+      wake: true, // background listening: overlapping pieces, nothing held back on stop
       onInterim: (t) => {
         if (!ducked && afterWake(t) != null) { ducked = true; resumeRef.current = o.current.pause(); setCaption("Listening…"); }
       },
       onFinal: (t) => {
-        const rest = afterWake(t);
-        if (rest == null || stateRef.current !== "wake") return;
+        if (afterWake(t) == null || stateRef.current !== "wake") return;
+        const [rest, ...more] = wakeParts(t);
+        queued.current = more.filter(Boolean).map((m) => wakeCommand(m) || firstSentence(m));
         if (!ducked) { ducked = true; resumeRef.current = o.current.pause(); }
         setState("listen");
         const cmd = rest && wakeCommand(rest);
@@ -85,7 +83,7 @@ export function useVoice(opts) {
         if (err === "not-allowed" || err === "service-not-allowed" || err === "audio-capture") return setHandsFree(false, MIC_ERRORS[err]);
         if (ducked && resumeRef.current) { resumeRef.current = false; o.current.resume(); }
         clearTimeout(wakeTimer.current);
-        wakeTimer.current = setTimeout(wake, err && err !== "no-speech" ? 3000 : 300); // back off on network errors
+        wakeTimer.current = setTimeout(wake, err && err !== "no-speech" ? 3000 : 50); // back off on network errors
       },
     });
     stopRef.current = stop;
@@ -94,6 +92,7 @@ export function useVoice(opts) {
   function setHandsFree(on, msg) {
     handsFreeRef.current = on;
     setHandsFreeRaw(on);
+    if (!on) queued.current = [];
     try { localStorage.setItem("voice:handsfree", on ? "1" : "0"); } catch {}
     clearTimeout(wakeTimer.current);
     if (on && !voiceSupported()) return setHandsFree(false, "Voice control needs Chrome or Edge.");
@@ -158,7 +157,7 @@ export function useVoice(opts) {
     return new Promise((done) => {
       const stop = listen({
         continuous: true,
-        maxMs: WAKE_MS,
+        wake: true, // background listening: overlapping pieces, nothing held back on stop
         onFinal: (t) => { if (afterWake(t) != null) window.speechSynthesis.cancel(); },
         onEnd: () => done(),
       });
