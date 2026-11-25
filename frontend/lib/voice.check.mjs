@@ -1,6 +1,58 @@
 // Run: node frontend/lib/voice.check.mjs
 import assert from "node:assert/strict";
-import { afterWake, dictation, nextRate, parseCommand as p, sentence, toNumber, wakeCommand, firstSentence, makeCutter, wakeParts } from "./voice.js";
+import { readFileSync } from "node:fs";
+import { afterWake, dictation, nextRate, parseCommand as p, sentence, toNumber, wakeCommand, firstSentence, makeCutter, wakeParts, phraseKey, interpret, forgetLast, LAST_PAGE } from "./voice.js";
+
+// ---- coverage: every action the AI may choose has a quick phrase and is handled somewhere in the app ----
+const EXAMPLE = {
+  pause: "pause", resume: "resume", rate: "read faster", page: "go to page 4", minute: "go to minute 5", skip: "skip back 30 seconds",
+  paragraph: "next paragraph", turn: "next page", bookmark: "bookmark this", readBookmark: "read my bookmark", back: "take me back",
+  repeat: "read that again", theme: "sepia mode", note: "take a note", notes: "show my notes", lastNote: "go to my last note",
+  deleteNote: "delete that note", handsfree: "stop listening", voice: "switch to Mary", sleep: "sleep in 20 minutes",
+  highlight: "turn highlighting off", where: "what page am I on", home: "back to the library", search: "search for faith moves mountains",
+  openBook: "open the book Garden Notes", undo: "undo", save: "save", export: "download the transcript", nextCheck: "next uncertain word",
+  help: "what can I say", ask: "what did he say about grace?",
+};
+const root = new URL("../../", import.meta.url);
+const actions = [...readFileSync(new URL("backend/app/modules/assistant/router.py", root), "utf8").match(/COMMANDS = """([\s\S]*?)"""/)[1]
+  .matchAll(/^(\w+):/gm)].map((m) => m[1]);
+const handled = ["frontend/app/reader/page.jsx", "frontend-stt/app/editor/page.jsx", "frontend/lib/useVoice.js"]
+  .map((f) => readFileSync(new URL(f, root), "utf8")).join("\n");
+for (const a of actions) {
+  assert.ok(EXAMPLE[a], `action "${a}" has no example phrase here`);
+  assert.equal(p(EXAMPLE[a])?.cmd, a, `"${EXAMPLE[a]}" should be ${a}`);
+  assert.ok(handled.includes(`"${a}"`), `action "${a}" is not handled by the reader, the editor or useVoice`);
+}
+// the new actions, a few more wordings each
+assert.deepEqual(p("what page am I on?"), { cmd: "where" });
+assert.deepEqual(p("go to the last page"), { cmd: "page", arg: LAST_PAGE });
+assert.deepEqual(p("beginning of the book"), { cmd: "page", arg: 1 });
+assert.deepEqual(p("let Brian read"), { cmd: "voice", arg: "brian" });
+assert.deepEqual(p("cancel the sleep timer"), { cmd: "sleep", arg: 0 });
+assert.deepEqual(p("stop reading in ten minutes"), { cmd: "sleep", arg: 10 });
+assert.deepEqual(p("find me the sermon where the words faith moves mountains were said"), { cmd: "search", arg: "the sermon where the words faith moves mountains were said" });
+// polite requests are requests, not questions about the book
+assert.deepEqual(p("Could you take me back?"), { cmd: "back" });
+assert.deepEqual(p("can you read faster please"), { cmd: "rate", arg: "+" });
+assert.equal(p("Could you go back to the part I saved earlier?"), null); // no quick phrase: the AI decides
+assert.deepEqual(p("Can I ask what he said about faith?"), { cmd: "ask", arg: "Can I ask what he said about faith?" });
+
+// memory commands
+for (const s of ["reread the bookmarked paragraph", "Read my bookmark.", "read from my bookmark", "go to the bookmark",
+  "play the bookmarked part again", "read my last bookmark", "take me to my bookmark"]) assert.deepEqual(p(s), { cmd: "readBookmark" }, s);
+for (const s of ["take me back", "Where was I?", "back to where I was", "go back to where I was"]) assert.deepEqual(p(s), { cmd: "back" }, s);
+for (const s of ["repeat", "read that again", "repeat that paragraph", "one more time", "say it again"]) assert.deepEqual(p(s), { cmd: "repeat" }, s);
+assert.deepEqual(p("bookmark this paragraph"), { cmd: "bookmark" }); // still saves a bookmark
+assert.deepEqual(p("go back"), { cmd: "skip", arg: -10 }); // still skips back
+assert.deepEqual(p("forget that"), { cmd: "forget" });
+// learning: polite words don't matter, and a learned phrase is answered without asking the server
+assert.equal(phraseKey("Please, could you reread the bookmarked paragraph?"), "reread the bookmarked paragraph");
+const store = {}; globalThis.localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = v; } };
+store["voice:learned"] = JSON.stringify({ "bump the speed up a little": { cmd: "rate", arg: "+" } });
+assert.deepEqual(await interpret("Can you bump the speed up a little, please"), { cmd: "rate", arg: "+" });
+assert.equal(forgetLast(), "bump the speed up a little");
+assert.equal(JSON.parse(store["voice:learned"])["bump the speed up a little"], undefined);
+assert.equal(forgetLast(), null);
 assert.deepEqual(wakeParts("Hey Nasoma, go to page 3. Hey Nasoma, sepia mode."), ["go to page 3.", "sepia mode."]);
 assert.deepEqual(wakeParts("the garden grows hey nasoma pause"), ["pause"]);
 assert.deepEqual(wakeParts("no wake word here"), []);
@@ -41,7 +93,7 @@ const cases = {
   "show my notes": { cmd: "notes", arg: true },
   "close notes": { cmd: "notes", arg: false },
   "go to my last note": { cmd: "lastNote" },
-  "play from the last bookmark": { cmd: "lastNote" },
+  "play from the last bookmark": { cmd: "readBookmark" },
   "delete that note": { cmd: "deleteNote" },
   "next paragraph": { cmd: "paragraph", arg: 1 },
   "previous paragraph": { cmd: "paragraph", arg: -1 },

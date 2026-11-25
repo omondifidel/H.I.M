@@ -601,6 +601,7 @@ function Reader() {
   latest.current = { toggle, move };
 
   // ---- voice control (mic orb / Ctrl+Space) ----
+  const visited = useRef([]); // places before each voice jump, newest last
   const voice = useVoice({
     pause: () => { const was = playingRef.current; if (was) pause(); return was; },
     resume: () => play(pos.current.page, pos.current.idx, pos.current.chunk),
@@ -608,6 +609,21 @@ function Reader() {
     dictate: (t) => { const b = draftRef.current.body; editDraft({ body: b + (b && !/\s$/.test(b) ? " " : "") + t }); },
     command: async ({ cmd, arg }) => {
       const { page: p, idx: i } = pos.current;
+      // remember where you were before each jump, so "take me back" works (several times)
+      if (["page", "turn", "paragraph", "skip", "lastNote", "readBookmark"].includes(cmd)) visited.current = [...visited.current, { page: p, idx: i }].slice(-20);
+      if (cmd === "back") {
+        const prev = visited.current.pop();
+        if (!prev) return "There is nowhere to go back to yet.";
+        await jump(prev.page, prev.idx);
+        return `Back to page ${prev.page}, paragraph ${prev.idx + 1}`;
+      }
+      if (cmd === "readBookmark") {
+        const b = notes.filter((n) => !n.deleted && n.body.startsWith("🔖")).sort((x, y) => (x.updated_at < y.updated_at ? 1 : -1))[0];
+        if (!b) return "There are no bookmarks in this book yet. Say “bookmark this” first.";
+        play(b.page, b.paragraph ?? 0, 0);
+        return `Reading your bookmark: page ${b.page}, paragraph ${(b.paragraph ?? 0) + 1}`;
+      }
+      if (cmd === "repeat") { play(p, i, 0); return `Reading paragraph ${i + 1} again`; }
       if (cmd === "pause") return pause();
       if (cmd === "resume") return play(p, i, pos.current.chunk);
       if (cmd === "rate") { const r = nextRate(rateRef.current, arg); changeRate(r); return `Speed ${r}x`; }
@@ -655,6 +671,33 @@ function Reader() {
         const r = await api("/api/assistant/ask", { method: "POST", body: { document_id: id, question: arg, context } });
         return r.answer;
       }
+      if (cmd === "where") {
+        const left = Math.max(0, numRef.current - p);
+        return `Page ${p} of ${numRef.current}, paragraph ${i + 1}. ${left ? `${left} ${left === 1 ? "page" : "pages"} to go.` : "This is the last page."}`;
+      }
+      if (cmd === "voice") {
+        changeVoice(arg);
+        return `${HUMAN_VOICES.find((v) => v.id === arg)?.name || arg} is reading now`;
+      }
+      if (cmd === "sleep") { setSleep(arg); return arg ? `I'll stop reading in ${arg} minutes` : "Sleep timer off"; }
+      if (cmd === "highlight") { changeHl(arg); return arg ? "Highlighting on" : "Highlighting off"; }
+      if (cmd === "home") { location.href = "/"; return "Back to your library"; }
+      if (cmd === "search") {
+        try { sessionStorage.setItem("voice:search", arg); } catch {}
+        location.href = "/";
+        return `Searching for “${arg}”`;
+      }
+      if (cmd === "openBook") {
+        const docs = await api("/api/documents");
+        const words = (s) => s.toLowerCase().replace(/\.pdf$/, "").split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2);
+        const want = words(arg);
+        const best = docs.map((d) => ({ d, score: words(d.title).filter((w) => want.includes(w)).length }))
+          .sort((a, b) => b.score - a.score)[0];
+        if (!best || !best.score) return `I couldn't find a book called “${arg}”.`;
+        location.href = `/reader/?id=${best.d.id}`;
+        return `Opening ${best.d.title.replace(/\.pdf$/i, "")}`;
+      }
+      return "That works in the sermon editor, not while reading a book.";
     },
   });
 

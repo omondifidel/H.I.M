@@ -41,6 +41,11 @@ def test_clean_command_keeps_only_real_actions():
     assert c({"cmd": "turn", "arg": -5}) == {"cmd": "turn", "arg": -1}
     assert c({"cmd": "theme", "arg": "sepia"}) == {"cmd": "theme", "arg": "sepia"}
     assert c({"cmd": "pause", "arg": "x"}) == {"cmd": "pause"}
+    assert c({"cmd": "readBookmark"}) == {"cmd": "readBookmark"} and c({"cmd": "back"}) == {"cmd": "back"}
+    assert c({"cmd": "voice", "arg": "Mary"}) == {"cmd": "voice", "arg": "mary"} and c({"cmd": "voice", "arg": "siri"}) is None
+    assert c({"cmd": "sleep", "arg": "999"}) == {"cmd": "sleep", "arg": 240}
+    assert c({"cmd": "page", "arg": 10**9}) == {"cmd": "page", "arg": 100000}
+    assert c({"cmd": "search", "arg": "faith"}) == {"cmd": "search", "arg": "faith"} and c({"cmd": "openBook", "arg": ""}) is None
     assert c({"cmd": "notes", "arg": "false"}) == {"cmd": "notes", "arg": False}
     for bad in [None, "pause", {"cmd": None}, {"cmd": "deleteEverything"}, {"cmd": "page", "arg": 0},
                 {"cmd": "page", "arg": "abc"}, {"cmd": "theme", "arg": "neon"}, {"cmd": "ask", "arg": ""}]:

@@ -454,6 +454,12 @@ function Library({ onLogout, user }) {
   const [offline, setOffline] = useState(new Set());
   const [notes, setNotes] = useState([]);
   const [tab, setTab] = useState("library");
+  const [voiceSearch, setVoiceSearch] = useState(""); // "search for faith" said while reading
+  useEffect(() => {
+    let s = null;
+    try { s = sessionStorage.getItem("voice:search"); sessionStorage.removeItem("voice:search"); } catch {}
+    if (s) { setVoiceSearch(s); setTab("search"); }
+  }, []);
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("recent");
@@ -1086,7 +1092,7 @@ function Library({ onLogout, user }) {
         </>
       ) : null}
 
-      {tab === "search" && <DeepSearch />}
+      {tab === "search" && <DeepSearch initial={voiceSearch} />}
 
       {tab === "notes" && (
         <div className="notes-page">

@@ -1,7 +1,7 @@
 // Voice control: tap the mic orb / press Ctrl+Space, or turn on hands-free and say "Hey Nasoma".
 // The page decides what each command does. Kept identical in frontend/lib and frontend-stt/lib.
 import { useEffect, useRef, useState } from "react";
-import { afterWake, dictation, firstSentence, interpret, wakeParts, listen, parseCommand, sentence, speak, voiceSupported, wakeCommand } from "./voice";
+import { afterWake, dictation, firstSentence, forgetLast, interpret, wakeParts, listen, parseCommand, sentence, speak, voiceSupported, wakeCommand } from "./voice";
 
 /**
  * opts.pause()        stop playback, return true if it was playing (it resumes after the command)
@@ -20,9 +20,13 @@ const MIC_ERRORS = {
 
 const FOLLOW_UP_MS = 8000; // like "Hey Google" continued conversation: no wake word needed right after a command
 
-const HELP ="You can say: pause, resume, read faster or slower, go to page 12, go to minute 5, skip back 30 seconds, " +
-  "next paragraph, bookmark this, dark, light or sepia mode, take a note, show my notes, or ask any question about what is open. " +
-  "Other wordings and Kiswahili work too.";
+const HELP = "You can say: pause, resume, read faster or slower, go to page 12, go to minute 5, skip back 30 seconds, " +
+  "next paragraph, bookmark this, read my bookmark, take me back, read that again, what page am I on, " +
+  "switch to Mary, sleep in 20 minutes, dark, light or sepia mode, take a note, show my notes, search for a word or verse, " +
+  "open a book, back to the library, or ask any question about what is open. Other wordings and Kiswahili work too, " +
+  "and I remember new wordings. If I get one wrong, say forget that.";
+// commands that start or stop playback themselves, so it must not be resumed afterwards
+const PLAYBACK = new Set(["pause", "resume", "readBookmark", "repeat"]);
 
 export function useVoice(opts) {
   const o = useRef(opts);
@@ -145,8 +149,12 @@ export function useVoice(opts) {
       await speak(HELP, o.current.voice);
       return finish();
     }
-    if (c.cmd === "pause" || c.cmd === "resume") resumeRef.current = false;
+    if (PLAYBACK.has(c.cmd)) resumeRef.current = false;
     if (c.cmd === "handsfree") { finish(); return setHandsFree(c.arg); }
+    if (c.cmd === "forget") {
+      const k = forgetLast();
+      return finish(k ? `Forgotten: “${k}”. Say it another way, or tap the mic.` : "There is nothing new I learned to forget.");
+    }
     if (c.cmd === "ask") { setState("think"); setCaption(`“${c.arg}” — thinking…`); }
     try {
       const out = await o.current.command(c);

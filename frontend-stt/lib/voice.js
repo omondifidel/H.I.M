@@ -269,11 +269,48 @@ export function dictation(t) {
   return m ? { text: m[1], stop: true } : { text: t, stop: false };
 }
 
-/** Any other wording ("bump the speed up a bit", "nenda ukurasa wa tano"): the server's AI picks the action.
- *  Resolves to { cmd, arg } or null. */
+// ---------- learning: phrases the AI understood once are remembered on this device ----------
+const LEARNED_KEY = "voice:learned", LEARNED_MAX = 300;
+const POLITE = /\b(?:please|kindly|can you|could you|would you|will you|i want you to|i want to|i'd like to|for me|now|just)\b/g;
+
+/** "Please, could you reread the bookmarked paragraph?" -> "reread the bookmarked paragraph" */
+export const phraseKey = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}'\s]/gu, " ").replace(POLITE, " ").replace(/\s+/g, " ").trim();
+
+function learned() {
+  try { return JSON.parse(localStorage.getItem(LEARNED_KEY) || "{}"); } catch { return {}; }
+}
+let lastLearned = null;
+
+/** "Forget that": the last phrase learned was understood wrongly. Returns it, or null. */
+export function forgetLast() {
+  const key = lastLearned;
+  lastLearned = null;
+  if (!key) return null;
+  try { const all = learned(); delete all[key]; localStorage.setItem(LEARNED_KEY, JSON.stringify(all)); } catch {}
+  return key;
+}
+
+function learn(key, command) {
+  lastLearned = key;
+  try {
+    const all = learned();
+    delete all[key]; // re-insert so the newest are kept when the list is full
+    all[key] = command;
+    const keys = Object.keys(all);
+    for (const k of keys.slice(0, Math.max(0, keys.length - LEARNED_MAX))) delete all[k];
+    localStorage.setItem(LEARNED_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+/** Any other wording ("bump the speed up a bit", "nenda ukurasa wa tano"): the server's AI picks the action
+ *  the first time; after that the phrase is remembered and answered instantly. Resolves to { cmd, arg } or null. */
 export async function interpret(text) {
+  const key = phraseKey(text);
+  const known = key && learned()[key];
+  if (known) { lastLearned = key; return known; }
   const { api } = await import("./api"); // browser only, like the Whisper path
   const { command } = await api("/api/assistant/command", { method: "POST", body: { text } });
+  if (command && key && command.cmd !== "ask") learn(key, command); // questions are answered fresh every time
   return command;
 }
 
@@ -328,13 +365,42 @@ export function afterWake(t) {
 export const wakeParts = (t) => wakeHits(t).map((h, i, all) => tidy(t.slice(h.end, all[i + 1]?.start ?? t.length)).replace(/[\s,]+$/, ""));
 
 const THEMES = { dark: "dark", night: "dark", light: "light", day: "light", sepia: "sepia" };
+export const LAST_PAGE = 100000; // "the last page": pages clamp it to the real last page
 const RULES = [
   [/^(?:help|commands|what can (?:i|you) (?:say|do)|what are (?:the|my) (?:commands|options))$/i, () => ({ cmd: "help" })],
   [/^(?:stop listening|(?:turn |switch )?hands[- ]?free(?: mode)? off|(?:turn|switch) off hands[- ]?free(?: mode)?)$/i, () => ({ cmd: "handsfree", arg: false })],
   [/^(?:(?:turn |switch )?hands[- ]?free(?: mode)? on|(?:turn|switch) on hands[- ]?free(?: mode)?|start listening)$/i, () => ({ cmd: "handsfree", arg: true })],
   [/^(?:close|hide) (?:the |my )?notes?$/i, () => ({ cmd: "notes", arg: false })],
   [/^(?:show|view|list) (?:me )?(?:the |my )?(?:notes|bookmarks)$/i, () => ({ cmd: "notes", arg: true })],
-  [/^(?:go to|jump to|play from|open|read) (?:my |the )?last (?:note|bookmark)$/i, () => ({ cmd: "lastNote" })],
+  // memory: the bookmark, where you were, what was just read
+  [/^(?:re-?read|read(?: me)?|play|go to|take me to|jump to|open|start)(?: from)? (?:the |my |that )?(?:last |latest )?bookmark(?:ed)?(?: paragraph| part| page| place| spot| passage)?(?: again)?$/i,
+    () => ({ cmd: "readBookmark" })],
+  [/^(?:take me back|(?:go |take me )?back to where i was|where was i|return to where i was)$/i, () => ({ cmd: "back" })],
+  // where you are, and the library
+  [/^(?:what|which) page (?:am i on|is this|are we on)|^where am i$|^how (?:far|much) (?:am i|is left|have i (?:read|listened))|^what time (?:is it )?in the (?:sermon|recording)/i, () => ({ cmd: "where" })],
+  [/^(?:go |take me )?(?:back )?(?:to )?(?:the |my )?(?:library|home(?: page)?|books)$|^close (?:the |this )?book$/i, () => ({ cmd: "home" })],
+  [/^(?:go to |jump to |take me to )?(?:the )?(first|last|final) page$|^(?:go to |jump to )?(?:the )?(beginning|start|end) of (?:the |this )?book$/i,
+    (m) => ({ cmd: "page", arg: /first|beginning|start/i.test(m[1] || m[2]) ? 1 : LAST_PAGE })],
+  // reading voice, sleep timer, highlighting
+  [/^(?:(?:switch|change|use)(?: the)?(?: voice| reader| narrator)?(?: to)? |read (?:it |this )?(?:in|with) |let )?(ann|mary|brian|andrew)(?:'s voice| voice)?(?: read(?: it| this)?)?$/i,
+    (m) => ({ cmd: "voice", arg: m[1].toLowerCase() })],
+  [/^(?:cancel|turn off|stop|clear) (?:the )?sleep(?: timer)?$/i, () => ({ cmd: "sleep", arg: 0 })],
+  [/^(?:set (?:a |the )?)?sleep(?: timer)?(?: (?:for|in|to))? (.+?) minutes?$|^stop (?:reading|playing) in (.+?) minutes?$/i,
+    (m) => toNumber(m[1] || m[2]) != null && { cmd: "sleep", arg: toNumber(m[1] || m[2]) }],
+  [/^(?:turn |switch )?highlight(?:ing)?(?: the (?:words|sentences?))? (on|off)$|^(?:turn|switch) (on|off) (?:the )?highlight(?:ing)?$/i,
+    (m) => ({ cmd: "highlight", arg: /on/i.test(m[1] || m[2]) })],
+  // the sermon editor
+  [/^undo(?: that| it| the last (?:edit|change))?$/i, () => ({ cmd: "undo" })],
+  [/^save(?: (?:it|this|the transcript|my (?:changes|work)|changes))?$/i, () => ({ cmd: "save" })],
+  [/^(?:export|download)(?: (?:it|this|the transcript))?(?: as (?:a )?(?:word|text|docx|txt)(?: file)?)?$/i, () => ({ cmd: "export" })],
+  [/^(?:next|go to the next|show me the next) (?:check|uncertain(?: word| part)?|unclear (?:word|part)|thing to check)$/i, () => ({ cmd: "nextCheck" })],
+  // search everything / open a book
+  [/^(?:search|find|look up|look for)(?: for| me)? (.+)$/i, (m) => ({ cmd: "search", arg: m[1] })],
+  [/^(?:open|read|start) (?:the )?book (?:called |named )?(.+)$/i, (m) => ({ cmd: "openBook", arg: m[1] })],
+  [/^(?:repeat(?: (?:that|this|the(?: last)?))?(?: (?:paragraph|sentence|part|bit))?|(?:read|say|play) (?:that|this|it)(?: (?:paragraph|part|bit))? again|again|one more time)$/i,
+    () => ({ cmd: "repeat" })],
+  [/^(?:go to|jump to|play from|open|read) (?:my |the )?last note$/i, () => ({ cmd: "lastNote" })],
+  [/^(?:forget (?:that|it)|that'?s (?:wrong|not what i (?:said|meant))|wrong (?:command|one))$/i, () => ({ cmd: "forget" })],
   [/^(?:delete|remove|erase) (?:the |that |this |my )?(?:last )?note$/i, () => ({ cmd: "deleteNote" })],
   [/^(next|previous) (paragraph|page)$/i, (m) => ({ cmd: /page/i.test(m[2]) ? "turn" : "paragraph", arg: /next/i.test(m[1]) ? 1 : -1 })],
   [/^(?:(?:skip|jump|go) )?(forward|ahead|back(?:wards?)?)(?: (.+?) seconds?)?$/i,
@@ -362,6 +428,13 @@ export function parseCommand(raw) {
   // Whisper punctuates ("Open notes, and write..."), so commas never matter
   const text = raw.replace(/,/g, " ").trim().replace(/\s+/g, " ").replace(/[;:!]+$|\.+$/, "");
   const bare = text.replace(/\?+$/, ""); // "What can I say?" is still the help command
+  // "Could you go back to the part I saved?" is a request, not a question about the book:
+  // without its polite start it must match a command, or the AI decides (it can still choose "ask").
+  const polite = bare.match(/^(?:please |(?:can|could|would|will) you (?:please )?|i (?:want|would like|'d like) (?:you )?to )(.+?)(?: please)?$/i);
+  if (polite) {
+    for (const [re, make] of RULES.slice(0, -2)) { const m = polite[1].match(re); if (m) return make(m) || null; }
+    return null;
+  }
   for (const [re, make] of RULES) {
     const m = text.match(re) || bare.match(re);
     if (m) return make(m) || null;

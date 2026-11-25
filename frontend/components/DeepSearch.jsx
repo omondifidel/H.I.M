@@ -1,6 +1,6 @@
 "use client";
 // Deep Word Finder: one search over sermons, books and your notes. Each result opens at the exact page or second.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "../lib/api";
 
@@ -21,8 +21,8 @@ export function resultHref(r) {
   return `/reader/?id=${r.id}&page=${r.page || 1}`;
 }
 
-export default function DeepSearch() {
-  const [q, setQ] = useState("");
+export default function DeepSearch({ initial = "" }) {
+  const [q, setQ] = useState(initial);
   const [kind, setKind] = useState("all");
   const [res, setRes] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -40,6 +40,7 @@ export default function DeepSearch() {
     }
     setBusy(false);
   }
+  useEffect(() => { if (initial) run(initial); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- a search said by voice
   const pickKind = (k) => { setKind(k); if (res) run(q, k); };
   const looking = res && [...res.parsed.phrases.map((p) => `“${p}”`), ...res.parsed.refs, ...res.parsed.terms].join(", ");
 

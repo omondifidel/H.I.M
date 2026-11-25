@@ -145,18 +145,32 @@ def listen(file: UploadFile = File(...), user: User = Depends(current_user)):
 COMMANDS = """pause: stop reading or playing
 resume: start reading or playing again
 rate: reading speed; arg is a number 0.5 to 3, or "+" for faster / "-" for slower
-page: go to a page; arg is the page number
+page: go to a page; arg is the page number, 1 for the first page, 100000 for the last page
 minute: go to a minute in a sermon; arg is the minute number
 skip: jump back or forward in a sermon; arg is seconds, negative for back
 paragraph: next or previous paragraph; arg is 1 or -1
 turn: next or previous page; arg is 1 or -1
-bookmark: bookmark the current place
+bookmark: bookmark (save) the current place
+readBookmark: go to the saved bookmark and read or play from it ("reread the bookmarked paragraph")
+back: return to where the user was before the last jump ("take me back", "where was I")
+repeat: read or play the current paragraph again from its start
 theme: change colours; arg is "dark", "light" or "sepia"
 note: start a note; arg is the words to write, or "" to just open a new note
 notes: show the notes (arg true) or close them (arg false)
 lastNote: go to the most recent note
 deleteNote: delete the open note
 handsfree: turn hands-free listening on (arg true) or off (arg false)
+voice: change the reading voice; arg is "ann", "mary", "brian" or "andrew"
+sleep: stop reading after some minutes; arg is the minutes, 0 to cancel the sleep timer
+highlight: highlight the sentence being read; arg true (on) or false (off)
+where: say where the user is (page, paragraph, time in the sermon, how much is left)
+home: leave the book or sermon and go back to the library
+search: search every book, sermon and note for words or a topic; arg is what to look for
+openBook: open another book; arg is its title or part of the title
+undo: undo the last edit in the sermon transcript
+save: save the sermon transcript now
+export: download the sermon transcript as a file
+nextCheck: go to the next uncertain word in the sermon transcript
 help: say which commands exist
 ask: a question about the open book or sermon; arg is the question"""
 INTENT = (
@@ -164,7 +178,9 @@ INTENT = (
     '\nReply with JSON only: {"cmd": "<action>", "arg": <value or null>}. '
     'If the request matches none of them, reply {"cmd": null}.'
 )
-_NO_ARG = {"pause", "resume", "bookmark", "lastNote", "deleteNote", "help"}
+_NO_ARG = {"pause", "resume", "bookmark", "readBookmark", "back", "repeat", "lastNote", "deleteNote", "help",
+           "where", "home", "undo", "save", "export", "nextCheck"}
+_VOICES = ("ann", "mary", "brian", "andrew")
 
 
 class HeardText(BaseModel):
@@ -186,8 +202,15 @@ def clean_command(raw) -> Optional[dict]:
         if cmd == "rate":
             return {"cmd": cmd, "arg": arg if arg in ("+", "-") else min(3.0, max(0.5, float(arg)))}
         if cmd in ("page", "minute"):
-            n = int(float(arg))
+            n = min(100000, int(float(arg)))
             return {"cmd": cmd, "arg": n} if n >= (1 if cmd == "page" else 0) else None
+        if cmd == "voice":
+            v = str(arg or "").strip().lower()
+            return {"cmd": cmd, "arg": v} if v in _VOICES else None
+        if cmd == "sleep":
+            return {"cmd": cmd, "arg": max(0, min(240, int(float(arg or 0))))}
+        if cmd == "highlight":
+            return {"cmd": cmd, "arg": arg is True or str(arg).lower() in ("true", "on", "1")}
         if cmd == "skip":
             return {"cmd": cmd, "arg": max(-3600, min(3600, int(float(arg))))}
         if cmd in ("paragraph", "turn"):
@@ -196,7 +219,7 @@ def clean_command(raw) -> Optional[dict]:
             return {"cmd": cmd, "arg": arg} if arg in ("dark", "light", "sepia") else None
         if cmd in ("notes", "handsfree"):
             return {"cmd": cmd, "arg": arg is True or str(arg).lower() in ("true", "on", "1")}
-        if cmd in ("note", "ask"):
+        if cmd in ("note", "ask", "search", "openBook"):
             text = str(arg or "").strip()[:500]
             return {"cmd": cmd, "arg": text} if text or cmd == "note" else None
     except (TypeError, ValueError):

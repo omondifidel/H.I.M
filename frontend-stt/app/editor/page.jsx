@@ -358,6 +358,9 @@ function Editor() {
   const deleteNote = (nid) => commitNotes(notesRef.current.filter((n) => n.id !== nid));
 
   // ---------- voice control (mic orb / Ctrl+Space) ----------
+  const visited = useRef([]); // times before each voice jump, newest last
+  const lastBookmark = useRef(null); // the bookmark made most recently in this session
+  const sleepTimer = useRef(null);
   const voice = useVoice({
     pause: () => { const a = audioRef.current; const was = !!a && !a.paused; if (was) a.pause(); return was; },
     resume: () => { audioRef.current?.play().catch(() => {}); },
@@ -367,13 +370,36 @@ function Editor() {
     },
     command: async ({ cmd, arg }) => {
       const a = audioRef.current;
+      const now = a ? a.currentTime : t;
+      // remember where you were before each jump, so "take me back" works (several times)
+      if (["minute", "skip", "paragraph", "lastNote", "readBookmark"].includes(cmd)) visited.current = [...visited.current, now].slice(-20);
+      if (cmd === "back") {
+        const prev = visited.current.pop();
+        if (prev == null) return "There is nowhere to go back to yet.";
+        if (a) a.currentTime = prev;
+        return `Back to ${clock(prev)}`;
+      }
+      if (cmd === "readBookmark") {
+        const marks = notesRef.current.filter((n) => n.body.startsWith("🔖"));
+        const b = marks.find((n) => n.id === lastBookmark.current) || marks[marks.length - 1];
+        if (!b) return "There are no bookmarks in this sermon yet. Say “bookmark this” first.";
+        if (a) { a.currentTime = b.time; a.play().catch(() => {}); }
+        return `Playing your bookmark at ${clock(b.time)}`;
+      }
+      if (cmd === "repeat") {
+        const list = parasRef.current;
+        let start = 0;
+        for (const p of list) { if (p.start <= now + 0.25) start = p.start; else break; }
+        if (a) { a.currentTime = start; a.play().catch(() => {}); }
+        return `Playing again from ${clock(start)}`;
+      }
       if (cmd === "pause") { a?.pause(); return; }
       if (cmd === "resume") { a?.play().catch(() => {}); return; }
       if (cmd === "rate") { const r = nextRate(rateRef.current, arg, 2); setRate(r); return `Speed ${r}x`; }
       if (cmd === "minute") { if (a) a.currentTime = Math.min(arg * 60, a.duration || arg * 60); return `Minute ${arg}`; }
       if (cmd === "page") return "Sermons have no pages. Say “go to minute 5”.";
       if (cmd === "theme") { setTheme(arg); applyTheme(arg); return `${arg[0].toUpperCase() + arg.slice(1)} mode`; }
-      if (cmd === "bookmark") return `Bookmarked ${clock(addNote("🔖 Bookmark").time)}`;
+      if (cmd === "bookmark") { const b = addNote("🔖 Bookmark"); lastBookmark.current = b.id; return `Bookmarked ${clock(b.time)}`; }
       if (cmd === "note") { addNote(); return; }
       if (cmd === "skip") { skip(arg); return arg < 0 ? `Back ${-arg} seconds` : `Forward ${arg} seconds`; }
       if (cmd === "turn") return "Sermons have no pages. Say “next paragraph” or “skip forward 30 seconds”.";
@@ -398,6 +424,20 @@ function Editor() {
         const r = await api("/api/assistant/ask", { method: "POST", body: { transcription_id: id, question: arg } });
         return r.answer;
       }
+      if (cmd === "where") return `${clock(now)} of ${clock(dur)}. ${clock(Math.max(0, dur - now))} to go.`;
+      if (cmd === "undo") { undo(); return "Undone"; }
+      if (cmd === "save") { await flush(); return "Saved"; }
+      if (cmd === "export") { await download(); return "Downloading the transcript"; }
+      if (cmd === "nextCheck") { nextCheck(); return "Next uncertain word"; }
+      if (cmd === "search") { setShowFind(true); setFind(arg); return `Finding “${arg}” in this sermon`; }
+      if (cmd === "home") { location.href = "/transcribe/"; return "Back to your sermons"; }
+      if (cmd === "voice" || cmd === "highlight" || cmd === "openBook") return "That works while reading a book.";
+      if (cmd === "sleep") {
+        clearTimeout(sleepTimer.current);
+        if (arg) sleepTimer.current = setTimeout(() => audioRef.current?.pause(), arg * 60000);
+        return arg ? `I'll stop playing in ${arg} minutes` : "Sleep timer off";
+      }
+      return "I can't do that here yet.";
     },
   });
 
