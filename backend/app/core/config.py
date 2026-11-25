@@ -40,7 +40,6 @@ class Settings:
     groq_model: str = "whisper-large-v3"
     groq_chat_model: str = "openai/gpt-oss-120b"  # voice Q&A
     openai_api_key: str = ""
-    gemini_api_key: str = ""                 # meaning search (embeddings); without it search is exact words only
     openai_model: str = "whisper-1"
     max_audio_bytes: int = 600 * 1024 * 1024
     chunk_seconds: int = 600                 # each piece sent for transcription
@@ -72,7 +71,6 @@ def load_settings() -> Settings:
         groq_model=os.environ.get("GROQ_MODEL", "whisper-large-v3").strip(),
         groq_chat_model=os.environ.get("GROQ_CHAT_MODEL", "openai/gpt-oss-120b").strip(),
         openai_api_key=os.environ.get("OPENAI_API_KEY", "").strip(),
-        gemini_api_key=os.environ.get("GEMINI_API_KEY", "").strip(),
         openai_model=os.environ.get("OPENAI_MODEL", "whisper-1").strip(),
         max_audio_bytes=int(os.environ.get("MAX_AUDIO_MB", "600")) * 1024 * 1024,
         chunk_seconds=int(os.environ.get("CHUNK_SECONDS", "600")),
