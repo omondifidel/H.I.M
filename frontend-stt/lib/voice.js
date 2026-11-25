@@ -151,11 +151,21 @@ export function dictation(t) {
   return m ? { text: m[1], stop: true } : { text: t, stop: false };
 }
 
+/** Any other wording ("bump the speed up a bit", "nenda ukurasa wa tano"): the server's AI picks the action.
+ *  Resolves to { cmd, arg } or null. */
+export async function interpret(text) {
+  const { api } = await import("./api"); // browser only, like the Whisper path
+  const { command } = await api("/api/assistant/command", { method: "POST", body: { text } });
+  return command;
+}
+
+/** The first sentence of a transcript that runs on (Whisper punctuates). "1.25x" stays whole. */
+export const firstSentence = (t) => t.split(/[.!?](?:\s|$)/)[0];
+
 /** The command said after the wake word. Over a voice reading aloud the transcript runs on
  *  ("pause. Choose a spot with good soil"), so the first sentence is tried before the whole thing. */
 export function wakeCommand(rest) {
-  const first = rest.split(/[.!?](?:\s|$)/)[0];
-  return [first, rest].find((r) => r && parseCommand(r)) || null;
+  return [firstSentence(rest), rest].find((r) => r && parseCommand(r)) || null;
 }
 
 /** Hands-free wake phrase: "Hey Nasoma" or "Hey assistant". Returns what was said after it ("" if nothing), or null. */
@@ -166,6 +176,7 @@ export function afterWake(t) {
 
 const THEMES = { dark: "dark", night: "dark", light: "light", day: "light", sepia: "sepia" };
 const RULES = [
+  [/^(?:help|commands|what can (?:i|you) (?:say|do)|what are (?:the|my) (?:commands|options))$/i, () => ({ cmd: "help" })],
   [/^(?:stop listening|(?:turn |switch )?hands[- ]?free(?: mode)? off|(?:turn|switch) off hands[- ]?free(?: mode)?)$/i, () => ({ cmd: "handsfree", arg: false })],
   [/^(?:(?:turn |switch )?hands[- ]?free(?: mode)? on|(?:turn|switch) on hands[- ]?free(?: mode)?|start listening)$/i, () => ({ cmd: "handsfree", arg: true })],
   [/^(?:close|hide) (?:the |my )?notes?$/i, () => ({ cmd: "notes", arg: false })],
@@ -197,10 +208,10 @@ const RULES = [
 export function parseCommand(raw) {
   // Whisper punctuates ("Open notes, and write..."), so commas never matter
   const text = raw.replace(/,/g, " ").trim().replace(/\s+/g, " ").replace(/[;:!]+$|\.+$/, "");
-  if (text.endsWith("?")) return { cmd: "ask", arg: text };
+  const bare = text.replace(/\?+$/, ""); // "What can I say?" is still the help command
   for (const [re, make] of RULES) {
-    const m = text.match(re);
+    const m = text.match(re) || bare.match(re);
     if (m) return make(m) || null;
   }
-  return null;
+  return text.endsWith("?") ? { cmd: "ask", arg: text } : null;
 }

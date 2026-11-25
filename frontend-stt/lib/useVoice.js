@@ -1,7 +1,7 @@
 // Voice control: tap the mic orb / press Ctrl+Space, or turn on hands-free and say "Hey Nasoma".
 // The page decides what each command does. Kept identical in frontend/lib and frontend-stt/lib.
 import { useEffect, useRef, useState } from "react";
-import { afterWake, dictation, listen, parseCommand, sentence, speak, voiceSupported, wakeCommand } from "./voice";
+import { afterWake, dictation, firstSentence, interpret, listen, parseCommand, sentence, speak, voiceSupported, wakeCommand } from "./voice";
 
 /**
  * opts.pause()        stop playback, return true if it was playing (it resumes after the command)
@@ -22,6 +22,10 @@ const MIC_ERRORS = {
 // so it sends what it has every few seconds instead of every 30.
 // ponytail: a wake word split across two pieces is missed; overlap the pieces if that happens often
 const WAKE_MS = 6000;
+
+const HELP = "You can say: pause, resume, read faster or slower, go to page 12, go to minute 5, skip back 30 seconds, " +
+  "next paragraph, bookmark this, dark, light or sepia mode, take a note, show my notes, or ask any question about what is open. " +
+  "Other wordings and Kiswahili work too.";
 
 export function useVoice(opts) {
   const o = useRef(opts);
@@ -66,7 +70,8 @@ export function useVoice(opts) {
         if (!ducked) { ducked = true; resumeRef.current = o.current.pause(); }
         setState("listen");
         const cmd = rest && wakeCommand(rest);
-        wakeNext.current = cmd ? () => run(cmd) : hear; // no clear command: playback is paused, so listen for one cleanly
+        // unusual wording goes to the AI; if even that fails, playback is paused, so listen for one cleanly
+        wakeNext.current = cmd ? () => run(cmd) : rest ? () => run(firstSentence(rest), "", hear) : hear;
         stopRef.current?.();
       },
       onEnd: (err) => {
@@ -111,12 +116,23 @@ export function useVoice(opts) {
     hear();
   }
 
-  async function run(text, err) {
+  async function run(text, err, orElse) {
     stopRef.current = null;
     if (!text) return finish(MIC_ERRORS[err] || "I didn't catch that. Try again.");
     text = afterWake(text) || text; // people often say the wake word even after tapping the mic
-    const c = parseCommand(text);
-    if (!c) return finish(`Not a command: “${text}”`);
+    let c = parseCommand(text);
+    if (!c) {
+      setState("think");
+      setCaption(`“${text}” — working out what you mean…`);
+      c = await interpret(text).catch(() => null);
+    }
+    if (!c) return orElse ? orElse() : finish(`I can't do “${text}” yet. Say “what can I say?” for the list.`);
+    if (c.cmd === "help") {
+      setState("speak");
+      setCaption(HELP);
+      await speak(HELP, o.current.voice);
+      return finish();
+    }
     if (c.cmd === "pause" || c.cmd === "resume") resumeRef.current = false;
     if (c.cmd === "handsfree") { finish(); return setHandsFree(c.arg); }
     if (c.cmd === "ask") { setState("think"); setCaption(`“${c.arg}” — thinking…`); }
