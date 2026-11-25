@@ -8,3 +8,4 @@ python-dotenv==1.0.1
 httpx==0.28.1
 python-docx==1.1.2
 boto3==1.35.99
+edge-tts>=6.1.12
