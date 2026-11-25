@@ -71,7 +71,8 @@ export function useVoice(opts) {
         setState("listen");
         const cmd = rest && wakeCommand(rest);
         // unusual wording goes to the AI; if even that fails, playback is paused, so listen for one cleanly
-        wakeNext.current = cmd ? () => run(cmd) : rest ? () => run(firstSentence(rest), "", hear) : hear;
+        const retry = () => { hear(); setCaption(`I can't do “${firstSentence(rest)}”. Say a command, or “what can I say?”`); };
+        wakeNext.current = cmd ? () => run(cmd) : rest ? () => run(firstSentence(rest), "", retry) : hear;
         stopRef.current?.();
       },
       onEnd: (err) => {
