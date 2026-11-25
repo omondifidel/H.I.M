@@ -937,9 +937,8 @@ body:has(.library-shell){background:var(--bg)}
   .sheet.notes-docked .tool{height:32px;padding:0 10px;font-size:12px}
 }
 
-
-/* ---------- Direct PDF Page Paragraph Highlight Overlay ---------- */
+/* ---------- Direct PDF Page Line/Sentence Highlighter ---------- */
 .pdf-hl-layer{position:absolute;inset:0;pointer-events:none}
-.pdf-para-band{position:absolute;pointer-events:auto;border:0;border-radius:6px;background:transparent;cursor:pointer;transition:background .18s,box-shadow .18s}
-.pdf-para-band:hover{background:rgba(59,130,246,.08)}
-.pdf-para-band.on{background:rgba(59,130,246,.16);box-shadow:inset 3px 0 0 var(--accent)}
+.pdf-line-hit{position:absolute;pointer-events:auto;border:0;background:transparent;cursor:pointer;border-radius:3px}
+.pdf-line-hit:hover{background:rgba(59,130,246,.08)}
+.pdf-line-hl{position:absolute;pointer-events:none;border-radius:4px;background:rgba(250,204,21,.34);box-shadow:0 1px 0 rgba(234,179,8,.45);transition:top .15s ease,left .15s ease,width .15s ease}
