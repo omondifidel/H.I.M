@@ -1,4 +1,5 @@
 """Application entry point: wires the modules together. No business logic lives here."""
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,6 +14,9 @@ from app.core.errors import AppError
 from app.core.migrations import run_migrations
 from app.modules.admin.router import router as admin_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.assistant.router import router as assistant_router
+from app.modules.search import index as search_index
+from app.modules.search.router import router as search_router
 from app.modules.auth import service as auth_service
 from app.modules.auth.router import router as auth_router
 from app.modules.library.router import router as library_router
@@ -26,6 +30,7 @@ from app.modules.library import models as _library_models  # noqa: F401
 from app.modules.transcription import models as _transcription_models  # noqa: F401
 from app.modules.usage import models as _usage_models  # noqa: F401
 from app.modules.notifications import models as _notification_models  # noqa: F401
+from app.modules.search import models as _search_models  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[2]  # the project folder (contains backend/ and the frontends)
 
@@ -43,6 +48,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         worker.start()  # the background thread that transcribes recordings
+        threading.Thread(target=search_index.backfill, daemon=True).start()  # index anything not indexed yet
         yield
         worker.stop()
 
@@ -59,6 +65,8 @@ def create_app() -> FastAPI:
     app.include_router(transcription_router)
     app.include_router(admin_router)
     app.include_router(notifications_router)
+    app.include_router(assistant_router)
+    app.include_router(search_router)
 
     @app.get("/api/health")
     def health():

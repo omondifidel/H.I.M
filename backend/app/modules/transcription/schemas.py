@@ -59,17 +59,35 @@ class Paragraph(Segment):
     last: int
 
 
+class SermonNote(BaseModel):
+    id: str = Field(max_length=40)
+    time: float = Field(ge=0)  # seconds into the recording
+    body: str = Field(max_length=20000)
+
+
 class TranscriptOut(BaseModel):
     id: str
     title: str
     duration: float
     segments: list[Segment]
     paragraphs: list[Paragraph]
+    notes: list[SermonNote] = []
+
+
+class SermonOut(BaseModel):
+    """Read-only view of a finished sermon, for anyone who found it in search. Notes stay private."""
+    id: str
+    title: str
+    duration: float
+    paragraphs: list[Paragraph]
+    mine: bool
+    has_audio: bool
 
 
 class TranscriptPatch(BaseModel):
     title: Optional[str] = None
     segments: Optional[list[Segment]] = None
+    notes: Optional[list[SermonNote]] = Field(default=None, max_length=2000)
 
 
 class EngineInfo(BaseModel):

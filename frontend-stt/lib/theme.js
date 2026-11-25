@@ -3,6 +3,7 @@ export const THEMES = [
   { id: "bluewhite", name: "Sky & Slate", bg: "#F3F8FD" },
   { id: "greenpurple", name: "Mint & Lavender", bg: "#F3F7F2" },
   { id: "dark", name: "Midnight Ink", bg: "#17151A" },
+  { id: "sepia", name: "Sepia Page", bg: "#F4ECD8" },
 ];
 
 export function getTheme() {
