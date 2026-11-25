@@ -363,10 +363,18 @@ function Reader() {
     if (ps) setParas(ps);
   }
 
-  // ---- speech (4 Human Neural Voices + offline browser fallback) ----
+  // ---- speech (4 Human Neural Voices — zero robotic fallback, instant prefetch) ----
+  const neuralCacheRef = useRef(new Map());
+  const neuralPendingRef = useRef(new Map());
+
   function stopAudio() {
     if (audioRef.current) {
-      try { audioRef.current.pause(); audioRef.current.src = ""; } catch {}
+      try {
+        audioRef.current.onended = null;
+        audioRef.current.onerror = null;
+        audioRef.current.pause();
+        audioRef.current.src = "";
+      } catch {}
       audioRef.current = null;
     }
     if (audioUrlRef.current) {
@@ -378,35 +386,59 @@ function Reader() {
     }
   }
 
-  function speakFallback(text, myRun, onDone) {
-    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
-    if (!synth) {
-      setPlay(false);
-      setError("Speech playback is unavailable on this browser.");
-      return;
-    }
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = rateRef.current;
-    const list = synth.getVoices();
-    const pref = voiceRef.current === "mary" ? "en-gb" : "en-us";
-    const v = list.find((x) => x.lang.toLowerCase().startsWith(pref)) || list[0];
-    if (v) { u.voice = v; u.lang = v.lang; }
-    u.onend = () => { if (myRun === run.current) onDone(); };
-    u.onerror = (e) => {
-      if (myRun !== run.current || e.error === "interrupted" || e.error === "canceled") return;
-      setPlay(false);
-    };
-    synth.speak(u);
-  }
+  function fetchNeuralBlob(text, voiceKey) {
+    const vKey = voiceKey || "ann";
+    const key = `${vKey}:${text}`;
+    const cached = neuralCacheRef.current.get(key);
+    if (cached) return Promise.resolve(cached);
+    const inflight = neuralPendingRef.current.get(key);
+    if (inflight) return inflight;
 
-  async function fetchNeuralBlob(text, voiceKey) {
-    const res = await fetch("/api/tts/speak", {
+    const req = fetch("/api/tts/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voice: voiceKey || "ann" }),
-    });
-    if (!res.ok) throw new Error("Neural TTS failed");
-    return await res.blob();
+      body: JSON.stringify({ text, voice: vKey }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Neural TTS failed");
+        const blob = await res.blob();
+        if (neuralCacheRef.current.size > 40) {
+          const oldest = neuralCacheRef.current.keys().next().value;
+          neuralCacheRef.current.delete(oldest);
+        }
+        neuralCacheRef.current.set(key, blob);
+        return blob;
+      })
+      .finally(() => {
+        neuralPendingRef.current.delete(key);
+      });
+
+    neuralPendingRef.current.set(key, req);
+    return req;
+  }
+
+  async function prefetchAhead(p, i, chunkNo, ps, vKey) {
+    try {
+      const curChunks = splitChunks(ps[i] || "");
+      if (chunkNo + 1 < curChunks.length) {
+        fetchNeuralBlob(curChunks[chunkNo + 1], vKey).catch(() => {});
+        return;
+      }
+      if (i + 1 < ps.length) {
+        const nextChunks = splitChunks(ps[i + 1] || "");
+        if (nextChunks[0]) fetchNeuralBlob(nextChunks[0], vKey).catch(() => {});
+        if (i + 2 < ps.length) {
+          const thirdChunks = splitChunks(ps[i + 2] || "");
+          if (thirdChunks[0]) fetchNeuralBlob(thirdChunks[0], vKey).catch(() => {});
+        }
+      } else if (p < numRef.current) {
+        const nextPs = await getParas(p + 1);
+        if (nextPs[0]) {
+          const firstNext = splitChunks(nextPs[0])[0];
+          if (firstNext) fetchNeuralBlob(firstNext, vKey).catch(() => {});
+        }
+      }
+    } catch {}
   }
 
   async function play(p, i, chunkNo = 0) {
@@ -431,11 +463,13 @@ function Reader() {
     show(p, i, ps);
     pos.current.chunk = chunkNo;
     setChunk(chunkNo);
-    if (p < numRef.current) getParas(p + 1).catch(() => {});
 
     const chunks = splitChunks(ps[i]);
     const text = chunks[chunkNo];
     if (text == null) return play(p, i + 1, 0);
+
+    const vKey = voiceRef.current;
+    prefetchAhead(p, i, chunkNo, ps, vKey);
 
     const advance = () => {
       if (myRun !== run.current) return;
@@ -444,7 +478,7 @@ function Reader() {
     };
 
     try {
-      const blob = await fetchNeuralBlob(text, voiceRef.current);
+      const blob = await fetchNeuralBlob(text, vKey);
       if (myRun !== run.current) return;
       const url = URL.createObjectURL(blob);
       audioUrlRef.current = url;
@@ -453,11 +487,16 @@ function Reader() {
       audioRef.current = audio;
       audio.onended = advance;
       audio.onerror = () => {
-        if (myRun === run.current) speakFallback(text, myRun, advance);
+        if (myRun !== run.current) return;
+        setPlay(false);
+        setError("Unable to play audio for this paragraph.");
       };
       await audio.play();
-    } catch {
-      if (myRun === run.current) speakFallback(text, myRun, advance);
+    } catch (err) {
+      if (myRun !== run.current) return;
+      if (err && err.name === "AbortError") return;
+      setPlay(false);
+      setError("Neural voice temporarily unavailable. Check your connection and tap Play.");
     }
   }
 
@@ -525,7 +564,11 @@ function Reader() {
     voiceRef.current = id;
     setVoiceURI(id);
     localStorage.setItem("tts:voice", id);
-    if (playingRef.current) play(pos.current.page, pos.current.idx, pos.current.chunk);
+    if (playingRef.current) {
+      play(pos.current.page, pos.current.idx, pos.current.chunk);
+    } else {
+      getParas(pos.current.page).then((ps) => prefetchAhead(pos.current.page, pos.current.idx - 1, 0, ps, id)).catch(() => {});
+    }
   }
   async function previewVoice(v) {
     pause();
@@ -539,8 +582,9 @@ function Reader() {
       audio.playbackRate = rateRef.current;
       audioRef.current = audio;
       await audio.play();
-    } catch {
-      if (myRun === run.current) speakFallback(`Hello, I'm ${v.name}.`, myRun, () => {});
+    } catch (err) {
+      if (myRun !== run.current || (err && err.name === "AbortError")) return;
+      setError("Preview unavailable right now.");
     }
   }
   function changeHl(v) {
