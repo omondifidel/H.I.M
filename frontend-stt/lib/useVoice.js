@@ -1,7 +1,7 @@
 // Voice control: tap the mic orb / press Ctrl+Space, or turn on hands-free and say "Hey Nasoma".
 // The page decides what each command does. Kept identical in frontend/lib and frontend-stt/lib.
 import { useEffect, useRef, useState } from "react";
-import { afterWake, dictation, listen, parseCommand, sentence, speak, voiceSupported } from "./voice";
+import { afterWake, dictation, listen, parseCommand, sentence, speak, voiceSupported, wakeCommand } from "./voice";
 
 /**
  * opts.pause()        stop playback, return true if it was playing (it resumes after the command)
@@ -17,6 +17,11 @@ const MIC_ERRORS = {
   network: "Couldn't reach the speech service. Check your internet and try again.",
   "no-speech": "I didn't hear anything. Tap the mic and speak right away.",
 };
+
+// Whisper path only: while waiting for "Hey Nasoma" over a voice reading aloud the mic never hears silence,
+// so it sends what it has every few seconds instead of every 30.
+// ponytail: a wake word split across two pieces is missed; overlap the pieces if that happens often
+const WAKE_MS = 6000;
 
 export function useVoice(opts) {
   const o = useRef(opts);
@@ -51,6 +56,7 @@ export function useVoice(opts) {
     setState("wake");
     const stop = listen({
       continuous: true,
+      maxMs: WAKE_MS,
       onInterim: (t) => {
         if (!ducked && afterWake(t) != null) { ducked = true; resumeRef.current = o.current.pause(); setCaption("Listening…"); }
       },
@@ -59,7 +65,8 @@ export function useVoice(opts) {
         if (rest == null || stateRef.current !== "wake") return;
         if (!ducked) { ducked = true; resumeRef.current = o.current.pause(); }
         setState("listen");
-        wakeNext.current = rest ? () => run(rest) : hear; // runs once this recognizer has fully stopped
+        const cmd = rest && wakeCommand(rest);
+        wakeNext.current = cmd ? () => run(cmd) : hear; // no clear command: playback is paused, so listen for one cleanly
         stopRef.current?.();
       },
       onEnd: (err) => {
@@ -134,6 +141,7 @@ export function useVoice(opts) {
     return new Promise((done) => {
       const stop = listen({
         continuous: true,
+        maxMs: WAKE_MS,
         onFinal: (t) => { if (afterWake(t) != null) window.speechSynthesis.cancel(); },
         onEnd: () => done(),
       });

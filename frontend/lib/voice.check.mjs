@@ -1,6 +1,6 @@
 // Run: node frontend/lib/voice.check.mjs
 import assert from "node:assert/strict";
-import { afterWake, dictation, nextRate, parseCommand as p, sentence, toNumber } from "./voice.js";
+import { afterWake, dictation, nextRate, parseCommand as p, sentence, toNumber, wakeCommand } from "./voice.js";
 
 const cases = {
   "Pause": { cmd: "pause" },
@@ -55,4 +55,10 @@ assert.equal(afterWake("Hey Nasoma"), "");
 assert.equal(afterWake("okay, na soma pause"), "pause");
 assert.equal(afterWake("the garden needs water hey assistant go to page 4"), "go to page 4");
 assert.equal(afterWake("hey there"), null);
+// a command said over the book being read aloud: the reading that follows must not spoil it
+assert.equal(wakeCommand("pause. Choose a spot with good soil"), "pause");
+assert.equal(wakeCommand("read at 1.25x. The garden needs"), "read at 1.25x");
+assert.equal(wakeCommand("what did he say about faith? Choose a spot"), "what did he say about faith");
+assert.equal(wakeCommand("go to page 2"), "go to page 2");
+assert.equal(wakeCommand("choose a spot with good soil"), null); // nothing usable: listen again
 console.log("voice.js: all checks passed");

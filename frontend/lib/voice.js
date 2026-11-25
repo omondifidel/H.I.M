@@ -39,8 +39,9 @@ export function listen(opts) {
 export const MIC_LEVEL = 8; // loudness (0-128) that counts as speech; raise it in a noisy room
 const QUIET_MS = 1200;      // this much silence ends a phrase
 
-/** Whisper path: records each spoken phrase (split on silence) and turns it into text on the server. */
-function record({ onInterim, onFinal, onEnd, continuous = false }) {
+/** Whisper path: records each spoken phrase (split on silence) and turns it into text on the server.
+ *  maxMs cuts a phrase that never goes quiet, e.g. the book being read aloud while you talk over it. */
+function record({ onInterim, onFinal, onEnd, continuous = false, maxMs = 30000 }) {
   let stopped = false, ended = false, stream = null, audio = null;
   const end = (err) => {
     if (ended) return;
@@ -69,7 +70,7 @@ function record({ onInterim, onFinal, onEnd, continuous = false }) {
       const tick = () => {
         const now = performance.now();
         if (level() > MIC_LEVEL) { lastLoud = now; if (!spoke) { spoke = true; onInterim?.("…"); } }
-        if (stopped || (spoke && now - lastLoud > QUIET_MS) || now - t0 > 30000 || (!continuous && !spoke && now - t0 > 7000)) rec.stop();
+        if (stopped || (spoke && now - lastLoud > QUIET_MS) || now - t0 > maxMs || (!continuous && !spoke && now - t0 > 7000)) rec.stop();
         else setTimeout(tick, 100);
       };
       tick();
@@ -148,6 +149,13 @@ export const sentence = (t) => {
 export function dictation(t) {
   const m = t.match(/^(.*?)\s*\b(?:stop|end|close|finish)(?: the)? (?:notes?|dictation)[.!]?$/i);
   return m ? { text: m[1], stop: true } : { text: t, stop: false };
+}
+
+/** The command said after the wake word. Over a voice reading aloud the transcript runs on
+ *  ("pause. Choose a spot with good soil"), so the first sentence is tried before the whole thing. */
+export function wakeCommand(rest) {
+  const first = rest.split(/[.!?](?:\s|$)/)[0];
+  return [first, rest].find((r) => r && parseCommand(r)) || null;
 }
 
 /** Hands-free wake phrase: "Hey Nasoma" or "Hey assistant". Returns what was said after it ("" if nothing), or null. */
