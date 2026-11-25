@@ -18,7 +18,9 @@ const MIC_ERRORS = {
   "no-speech": "I didn't hear anything. Tap the mic and speak right away.",
 };
 
-const HELP = "You can say: pause, resume, read faster or slower, go to page 12, go to minute 5, skip back 30 seconds, " +
+const FOLLOW_UP_MS = 8000; // like "Hey Google" continued conversation: no wake word needed right after a command
+
+const HELP ="You can say: pause, resume, read faster or slower, go to page 12, go to minute 5, skip back 30 seconds, " +
   "next paragraph, bookmark this, dark, light or sepia mode, take a note, show my notes, or ask any question about what is open. " +
   "Other wordings and Kiswahili work too.";
 
@@ -37,6 +39,7 @@ export function useVoice(opts) {
   const wakeTimer = useRef(null);
   const wakeNext = useRef(null);
   const queued = useRef([]); // more commands said in the same breath, run one after another
+  const followUntil = useRef(0); // just after a command, the next one works without "Hey Nasoma"
   const setState = (s) => { stateRef.current = s; setStateRaw(s); };
 
   function finish(msg) {
@@ -46,6 +49,7 @@ export function useVoice(opts) {
     setState("idle");
     if (msg) setCaption(msg);
     if (queued.current.length) return run(queued.current.shift()); // playback stays paused until the last one
+    followUntil.current = Date.now() + FOLLOW_UP_MS;
     if (resumeRef.current) { resumeRef.current = false; o.current.resume(); }
     if (handsFreeRef.current) { clearTimeout(wakeTimer.current); wakeTimer.current = setTimeout(wake, 50); } // the mic stays open, so nothing said meanwhile is lost
   }
@@ -62,7 +66,15 @@ export function useVoice(opts) {
         if (!ducked && afterWake(t) != null) { ducked = true; resumeRef.current = o.current.pause(); setCaption("Listening…"); }
       },
       onFinal: (t) => {
-        if (afterWake(t) == null || stateRef.current !== "wake") return;
+        if (stateRef.current !== "wake") return;
+        if (afterWake(t) == null) {
+          // No wake word. A plain known command right after the last one still counts ("next page");
+          // otherwise say what was heard, so a wake word the speech service spelled oddly is visible.
+          const plain = parseCommand(firstSentence(t));
+          if (!plain || plain.cmd === "ask") return;
+          if (Date.now() > followUntil.current) return setCaption(`Say “Hey Nasoma” first (heard “${firstSentence(t)}”)`);
+          t = "hey nasoma " + t;
+        }
         const [rest, ...more] = wakeParts(t);
         queued.current = more.filter(Boolean).map((m) => wakeCommand(m) || firstSentence(m));
         if (!ducked) { ducked = true; resumeRef.current = o.current.pause(); }

@@ -170,23 +170,25 @@ function record({ onInterim, onFinal, onEnd, continuous = false, wake = false })
     closeEarSoon(e);
     onEnd(err);
   };
-  const send = (from, to) => {
+  // final: the last words when you tap the mic. Anything else is dropped once this listener has stopped,
+  // so a late copy from an overlapping piece can never run a command twice.
+  const send = (from, to, final = false) => {
     e.used = Math.max(e.used, to);
     const wav = toWav(e, from, to);
     queue = queue.then(async () => {
-      if (ended) return;
+      if (ended || (stopped && !final)) return;
       const form = new FormData();
       form.append("file", wav, "speech.wav");
       const { api } = await import("./api"); // browser only; keeps this file runnable in node for the checks
       const { text } = await api("/api/assistant/listen", { method: "POST", form });
-      if (text && !ended) { heard = true; onFinal(text); }
+      if (text && !ended && (!stopped || final)) { heard = true; onFinal(text); }
     }).catch(() => end("network"));
   };
   const stop = (err = "", keep = !wake) => {
     if (stopped) return;
     stopped = true;
     e.listeners.delete(l);
-    if (keep && cut?.spoke) send(cut.from, l.cursor); // words said just before you tapped the mic still count
+    if (keep && cut?.spoke) send(cut.from, l.cursor, true); // words said just before you tapped the mic still count
     queue.then(() => end(err === "no-speech" && heard ? "" : err));
   };
   l.feed = () => {
@@ -196,7 +198,7 @@ function record({ onInterim, onFinal, onEnd, continuous = false, wake = false })
       if (r === "no-speech") return stop("no-speech", false);
       if (r) {
         said = false;
-        send(r[0], r[1]);
+        send(r[0], r[1], !continuous); // a one-command listener stops right after its phrase: still deliver it
         if (!continuous) return stop("", false);
       }
     }
@@ -284,15 +286,46 @@ export function wakeCommand(rest) {
   return [firstSentence(rest), rest].find((r) => r && parseCommand(r)) || null;
 }
 
-/** Hands-free wake phrase: "Hey Nasoma" or "Hey assistant". Returns what was said after it ("" if nothing), or null. */
-const WAKE = /\b(?:hey|hi|okay|ok)[\s,]+(?:na ?soma|nasomo|assistant)\b[\s,.!]*/i;
+// ---------- the wake word, as speech-to-text really writes it ----------
+// Real voices and rooms come back as "Nesoma", "Nasuma", "Na Soma", "Hi Nasoma" or without the "Hey",
+// so the name matches within two letters of "nasoma" (and "assistant" works too).
+const GREETINGS = new Set(["hey", "hi", "hei", "hay", "he", "okay", "ok", "eh", "a"]);
+
+function editDistance(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+const isName = (w) => w === "assistant" || (w.length >= 5 && w.length <= 8 && editDistance(w, "nasoma") <= 2);
+
+/** Where each wake phrase is in t: [{ start, end }] as character positions. */
+function wakeHits(t) {
+  const words = [...t.matchAll(/[\p{L}']+/gu)].map((m) => ({ w: m[0].toLowerCase(), s: m.index, e: m.index + m[0].length }));
+  const hits = [];
+  for (let i = 0; i < words.length; i++) {
+    const two = words[i + 1] && words[i].w + words[i + 1].w; // "na soma" said as two words
+    const n = isName(words[i].w) ? 1 : two && words[i].w.length <= 3 && isName(two) ? 2 : 0;
+    if (!n) continue;
+    const greet = i > 0 && GREETINGS.has(words[i - 1].w);
+    hits.push({ start: words[greet ? i - 1 : i].s, end: words[i + n - 1].e });
+    i += n - 1;
+  }
+  return hits;
+}
+const tidy = (s) => s.replace(/^[\s,.!?:;-]+/, "").trim();
+
+/** Hands-free wake phrase: "Hey Nasoma". Returns what was said after it ("" if nothing), or null. */
 export function afterWake(t) {
-  const i = t.search(WAKE);
-  return i < 0 ? null : t.slice(i).replace(WAKE, "").trim();
+  const [hit] = wakeHits(t);
+  return hit ? tidy(t.slice(hit.end)) : null;
 }
 
 /** Several commands in one breath: "Hey Nasoma, page 3. Hey Nasoma, sepia mode" -> ["page 3.", "sepia mode"]. */
-export const wakeParts = (t) => t.split(new RegExp(WAKE.source, "gi")).slice(1).map((s) => s.trim());
+export const wakeParts = (t) => wakeHits(t).map((h, i, all) => tidy(t.slice(h.end, all[i + 1]?.start ?? t.length)).replace(/[\s,]+$/, ""));
 
 const THEMES = { dark: "dark", night: "dark", light: "light", day: "light", sepia: "sepia" };
 const RULES = [

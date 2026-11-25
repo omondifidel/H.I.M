@@ -4,6 +4,15 @@ import { afterWake, dictation, nextRate, parseCommand as p, sentence, toNumber, 
 assert.deepEqual(wakeParts("Hey Nasoma, go to page 3. Hey Nasoma, sepia mode."), ["go to page 3.", "sepia mode."]);
 assert.deepEqual(wakeParts("the garden grows hey nasoma pause"), ["pause"]);
 assert.deepEqual(wakeParts("no wake word here"), []);
+// the wake word as speech-to-text really writes it
+for (const [said, rest] of [["Hey Nesoma, pause.", "pause."], ["Hi Nasuma go to page 3", "go to page 3"], ["Hey, Na Soma. Read faster.", "Read faster."],
+  ["Nasoma, next page", "next page"], ["Hey Masoma sepia mode", "sepia mode"], ["Okay Nasomah, pause", "pause"], ["hey assistant pause", "pause"]]) {
+  assert.equal(afterWake(said), rest, said);
+}
+for (const said of ["NASA launched a rocket", "hey there", "the season of Panama", "Osama", "and the garden grows", "Hey Sam, pause"]) {
+  assert.equal(afterWake(said), null, said);
+}
+assert.deepEqual(wakeParts("Hey Nesoma, sepia mode. Hi Nasuma, go to page 2."), ["sepia mode.", "go to page 2."]);
 
 const cases = {
   "Pause": { cmd: "pause" },
