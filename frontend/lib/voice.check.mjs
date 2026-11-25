@@ -1,6 +1,9 @@
 // Run: node frontend/lib/voice.check.mjs
 import assert from "node:assert/strict";
-import { afterWake, dictation, nextRate, parseCommand as p, sentence, toNumber, wakeCommand, firstSentence } from "./voice.js";
+import { afterWake, dictation, nextRate, parseCommand as p, sentence, toNumber, wakeCommand, firstSentence, makeCutter, wakeParts } from "./voice.js";
+assert.deepEqual(wakeParts("Hey Nasoma, go to page 3. Hey Nasoma, sepia mode."), ["go to page 3.", "sepia mode."]);
+assert.deepEqual(wakeParts("the garden grows hey nasoma pause"), ["pause"]);
+assert.deepEqual(wakeParts("no wake word here"), []);
 
 const cases = {
   "Pause": { cmd: "pause" },
@@ -65,4 +68,17 @@ assert.deepEqual(p("What can I say?"), { cmd: "help" });
 assert.deepEqual(p("help"), { cmd: "help" });
 assert.equal(firstSentence("bump the speed up. Choose a spot"), "bump the speed up");
 assert.equal(firstSentence("read at 1.25x"), "read at 1.25x");
+// the phrase cutter (10 chunks a second): where recordings start and end
+const run = (opts, levels) => { const c = makeCutter({ perS: 10, ...opts }), out = []; levels.forEach((v, i) => { const r = c.push(i + (opts.start || 0), v); if (r) out.push(r); }); return out; };
+const loud = (n) => Array(n).fill(50), quiet = (n) => Array(n).fill(0);
+// a phrase, then silence: one piece, with a little audio from before it
+assert.deepEqual(run({ start: 0, continuous: true }, [...quiet(20), ...loud(15), ...quiet(20)]), [[16, 47]]);
+// said before this listener started (backlog, live from chunk 50) still counts
+assert.deepEqual(run({ start: 0, live: 50, continuous: false }, [...quiet(10), ...loud(10), ...quiet(20)]), [[6, 32]]);
+// command mode gives up after 7 s of live silence
+assert.equal(run({ start: 0, continuous: false }, quiet(80))[0], "no-speech");
+// reading aloud never goes quiet: overlapping pieces, so any 2.5 s (a "Hey Nasoma ...") fits whole in one of them
+const pieces = run({ start: 0, continuous: true, wake: true }, loud(300));
+assert.ok(pieces.length >= 6);
+for (let a = 0; a + 25 <= Math.max(...pieces.map((p) => p[1])); a++) assert.ok(pieces.some(([f, t]) => f <= a && a + 25 <= t), `span at ${a} is split`);
 console.log("voice.js: all checks passed");

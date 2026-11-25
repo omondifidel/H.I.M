@@ -2,7 +2,7 @@
 // Kept identical in frontend/lib and frontend-stt/lib. Check: node frontend/lib/voice.check.mjs
 
 const Recognition = () => typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
-const canRecord = () => typeof window !== "undefined" && !!(navigator.mediaDevices && window.MediaRecorder);
+const canRecord = () => typeof window !== "undefined" && !!(navigator.mediaDevices && window.AudioWorkletNode);
 export const voiceSupported = () => !!Recognition() || canRecord();
 
 // Chrome's built-in recognition streams audio to Google. When that is blocked (antivirus, firewall, no Google
@@ -37,62 +37,178 @@ export function listen(opts) {
 }
 
 export const MIC_LEVEL = 8; // loudness (0-128) that counts as speech; raise it in a noisy room
-const QUIET_MS = 1200;      // this much silence ends a phrase
+const QUIET_S = 1.2;        // this much silence ends a phrase
+const WAKE_S = 6;           // over sound that never goes quiet (the book read aloud), send a piece this long...
+const OVERLAP_S = 2.5;      // ...overlapping the last one by this much, so "Hey Nasoma" is never cut in half
+const BACKLOG_S = 5;        // a new listener first hears the last few seconds nobody has turned into text yet
+const PREROLL_S = 0.4;      // keep a little audio from just before speech starts
+const CHUNK = 2048;         // samples per microphone callback
 
-/** Whisper path: records each spoken phrase (split on silence) and turns it into text on the server.
- *  maxMs cuts a phrase that never goes quiet, e.g. the book being read aloud while you talk over it. */
-function record({ onInterim, onFinal, onEnd, continuous = false, maxMs = 30000 }) {
-  let stopped = false, ended = false, stream = null, audio = null;
+/**
+ * Where phrases start and end, from one loudness value per chunk (pure, checked in voice.check.mjs).
+ * push(i, level) returns a [from, to) range to transcribe, "no-speech", or null.
+ */
+export function makeCutter({ start, live = start, perS, continuous, wake }) {
+  const n = (s) => Math.round(s * perS);
+  let from = start, spoke = false, lastLoud = start;
+  const max = n(wake ? WAKE_S : 30);
+  return {
+    get spoke() { return spoke; },
+    get from() { return from; },
+    push(i, level) {
+      const loud = level > MIC_LEVEL;
+      if (!spoke) {
+        if (loud) { spoke = true; lastLoud = i; from = Math.max(from, i - n(PREROLL_S)); return null; }
+        from = Math.max(from, i - n(PREROLL_S));
+        return !continuous && i - live > n(7) ? "no-speech" : null; // 7 s of live silence
+      }
+      if (loud) lastLoud = i;
+      if (i - lastLoud > n(QUIET_S)) { const r = [from, i]; spoke = false; from = i; return r; }
+      if (i - from >= max) { const r = [from, i]; from = wake ? i - n(OVERLAP_S) : i; return r; }
+      return null;
+    },
+  };
+}
+
+// Whisper path: one microphone stays open while voice is in use, so there is no gap between listeners
+// (after a command the next one is heard even if you start talking straight away).
+let ear = null;
+
+// Runs on the audio thread and hands the page CHUNK samples at a time; messages queue up if the page is busy.
+const WORKLET = `registerProcessor("ear", class extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = new Float32Array(${CHUNK}); this.n = 0; }
+  process([input]) {
+    const ch = input[0];
+    if (ch) for (let i = 0; i < ch.length; i++) {
+      this.buf[this.n++] = ch[i];
+      if (this.n === ${CHUNK}) { this.port.postMessage(this.buf, [this.buf.buffer]); this.buf = new Float32Array(${CHUNK}); this.n = 0; }
+    }
+    return true;
+  }
+});`;
+
+function openEar() {
+  if (ear) { clearTimeout(ear.closeTimer); return ear; }
+  const e = (ear = { chunks: [], first: 0, used: 0, perS: 48000 / CHUNK, rate: 48000, listeners: new Set() });
+  e.end = () => e.first + e.chunks.length;
+  e.ready = (async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const ctx = new AudioContext();
+    // Chrome starts audio "suspended" until the page is clicked (e.g. hands-free turned back on at page load)
+    const wakeUp = () => { if (ctx.state === "suspended") ctx.resume().catch(() => {}); };
+    wakeUp();
+    ctx.onstatechange = wakeUp;
+    addEventListener("pointerdown", wakeUp);
+    addEventListener("keydown", wakeUp);
+    // Recorded on the audio thread: a busy page can't make it skip audio (ScriptProcessor on the main thread did).
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
+    const node = new AudioWorkletNode(ctx, "ear");
+    ctx.createMediaStreamSource(stream).connect(node);
+    // Into a stream, not the speakers: after ~30 s of silent output Chrome switches the context to a
+    // power-saving clock that runs slow, and a third of what you said was lost.
+    node.connect(ctx.createMediaStreamDestination());
+    Object.assign(e, { stream, ctx, rate: ctx.sampleRate, perS: ctx.sampleRate / CHUNK });
+    e.cleanup = () => { removeEventListener("pointerdown", wakeUp); removeEventListener("keydown", wakeUp); };
+    node.port.onmessage = ({ data }) => {
+      let sum = 0;
+      for (const v of data) sum += v * v;
+      e.chunks.push({ data, level: Math.sqrt(sum / data.length) * 128 });
+      const keep = Math.min(e.end() - Math.round((BACKLOG_S + 1) * e.perS), ...[...e.listeners].map((l) => l.oldest()));
+      if (keep > e.first) { e.chunks.splice(0, keep - e.first); e.first = keep; }
+      for (const l of [...e.listeners]) l.feed();
+    };
+  })();
+  e.ready.catch(() => { if (ear === e) ear = null; });
+  return e;
+}
+
+function closeEarSoon(e) {
+  if (e.listeners.size) return;
+  clearTimeout(e.closeTimer);
+  e.closeTimer = setTimeout(() => { // stays open between hands-free listeners; closes (mic light off) when idle
+    if (e.listeners.size) return;
+    e.stream?.getTracks().forEach((t) => t.stop());
+    e.ctx?.close().catch(() => {});
+    e.cleanup?.();
+    if (ear === e) ear = null;
+  }, 15000);
+}
+
+/** 16 kHz mono WAV of chunks [from, to): small to upload and what Whisper expects anyway. */
+function toWav(e, from, to) {
+  const parts = e.chunks.slice(Math.max(0, from - e.first), to - e.first).map((c) => c.data);
+  const step = e.rate / 16000;
+  const total = parts.reduce((a, p) => a + p.length, 0);
+  const out = new Int16Array(Math.floor(total / step));
+  let k = 0, acc = 0, cnt = 0, pos = 0, next = step;
+  for (const p of parts) {
+    for (const v of p) {
+      acc += v; cnt++; pos++;
+      if (pos >= next && k < out.length) { out[k++] = Math.max(-1, Math.min(1, acc / cnt)) * 32767; acc = cnt = 0; next += step; }
+    }
+  }
+  const buf = new DataView(new ArrayBuffer(44 + out.length * 2));
+  const str = (o, t) => { for (let j = 0; j < t.length; j++) buf.setUint8(o + j, t.charCodeAt(j)); };
+  str(0, "RIFF"); buf.setUint32(4, 36 + out.length * 2, true); str(8, "WAVEfmt ");
+  buf.setUint32(16, 16, true); buf.setUint16(20, 1, true); buf.setUint16(22, 1, true);
+  buf.setUint32(24, 16000, true); buf.setUint32(28, 32000, true); buf.setUint16(32, 2, true); buf.setUint16(34, 16, true);
+  str(36, "data"); buf.setUint32(40, out.length * 2, true);
+  out.forEach((v, j) => buf.setInt16(44 + j * 2, v, true));
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+/** Whisper path: turns each spoken phrase into text on the server. wake: listening for "Hey Nasoma" in the
+ *  background (overlapping pieces over continuous sound; nothing is held back when it stops). */
+function record({ onInterim, onFinal, onEnd, continuous = false, wake = false }) {
+  let stopped = false, ended = false, heard = false, said = false, queue = Promise.resolve(), cut = null;
+  const e = openEar();
+  const l = { cursor: 0, oldest: () => (cut ? Math.min(cut.from, l.cursor) : l.cursor) };
   const end = (err) => {
     if (ended) return;
     ended = true;
-    stream?.getTracks().forEach((t) => t.stop());
-    audio?.close().catch(() => {});
+    e.listeners.delete(l);
+    closeEarSoon(e);
     onEnd(err);
   };
-  (async () => {
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) {
-      return end(e.name === "NotFoundError" ? "audio-capture" : "not-allowed");
-    }
-    audio = new AudioContext();
-    const meter = audio.createAnalyser();
-    audio.createMediaStreamSource(stream).connect(meter);
-    const buf = new Uint8Array(meter.fftSize);
-    const level = () => { meter.getByteTimeDomainData(buf); let s = 0; for (const v of buf) s += (v - 128) ** 2; return Math.sqrt(s / buf.length); };
-
-    // Records until a pause after speech. Resolves with the clip, or null if nobody spoke.
-    const phrase = () => new Promise((resolve) => {
-      const chunks = [], rec = new MediaRecorder(stream), t0 = performance.now();
-      let spoke = false, lastLoud = t0;
-      rec.ondataavailable = (e) => chunks.push(e.data);
-      rec.onstop = () => resolve(spoke ? new Blob(chunks, { type: rec.mimeType }) : null);
-      rec.start();
-      const tick = () => {
-        const now = performance.now();
-        if (level() > MIC_LEVEL) { lastLoud = now; if (!spoke) { spoke = true; onInterim?.("…"); } }
-        if (stopped || (spoke && now - lastLoud > QUIET_MS) || now - t0 > maxMs || (!continuous && !spoke && now - t0 > 7000)) rec.stop();
-        else setTimeout(tick, 100);
-      };
-      tick();
-    });
-
-    let heard = false;
-    do {
-      const clip = await phrase();
-      if (!clip) continue;
+  const send = (from, to) => {
+    e.used = Math.max(e.used, to);
+    const wav = toWav(e, from, to);
+    queue = queue.then(async () => {
+      if (ended) return;
       const form = new FormData();
-      form.append("file", clip, "speech.webm");
-      try {
-        const { api } = await import("./api"); // browser only; keeps this file runnable in node for the checks
-        const { text } = await api("/api/assistant/listen", { method: "POST", form });
-        if (text) { heard = true; onFinal(text); }
-      } catch {
-        return end("network");
+      form.append("file", wav, "speech.wav");
+      const { api } = await import("./api"); // browser only; keeps this file runnable in node for the checks
+      const { text } = await api("/api/assistant/listen", { method: "POST", form });
+      if (text && !ended) { heard = true; onFinal(text); }
+    }).catch(() => end("network"));
+  };
+  const stop = (err = "", keep = !wake) => {
+    if (stopped) return;
+    stopped = true;
+    e.listeners.delete(l);
+    if (keep && cut?.spoke) send(cut.from, l.cursor); // words said just before you tapped the mic still count
+    queue.then(() => end(err === "no-speech" && heard ? "" : err));
+  };
+  l.feed = () => {
+    for (const last = e.end(); l.cursor < last && !stopped; l.cursor++) {
+      const r = cut.push(l.cursor, e.chunks[l.cursor - e.first].level);
+      if (cut.spoke && !said) { said = true; onInterim?.("…"); }
+      if (r === "no-speech") return stop("no-speech", false);
+      if (r) {
+        said = false;
+        send(r[0], r[1]);
+        if (!continuous) return stop("", false);
       }
-    } while (continuous && !stopped);
-    end(heard || stopped ? "" : "no-speech");
-  })();
-  return () => { stopped = true; };
+    }
+  };
+  e.ready.then(() => {
+    if (stopped) return end("");
+    l.cursor = Math.max(e.used, e.end() - Math.round(BACKLOG_S * e.perS), e.first);
+    cut = makeCutter({ start: l.cursor, live: e.end(), perS: e.perS, continuous, wake });
+    e.listeners.add(l);
+    l.feed(); // the backlog first: what was said while nobody was listening
+  }, (err) => end(err?.name === "NotFoundError" ? "audio-capture" : "not-allowed"));
+  return () => stop();
 }
 
 /** Speaks text sentence by sentence (long utterances get cut off in Chrome). Resolves when done or cancelled. */
@@ -169,10 +285,14 @@ export function wakeCommand(rest) {
 }
 
 /** Hands-free wake phrase: "Hey Nasoma" or "Hey assistant". Returns what was said after it ("" if nothing), or null. */
+const WAKE = /\b(?:hey|hi|okay|ok)[\s,]+(?:na ?soma|nasomo|assistant)\b[\s,.!]*/i;
 export function afterWake(t) {
-  const m = t.match(/\b(?:hey|hi|okay|ok)[\s,]+(?:na ?soma|nasomo|assistant)\b[\s,.!]*(.*)$/i);
-  return m ? m[1].trim() : null;
+  const i = t.search(WAKE);
+  return i < 0 ? null : t.slice(i).replace(WAKE, "").trim();
 }
+
+/** Several commands in one breath: "Hey Nasoma, page 3. Hey Nasoma, sepia mode" -> ["page 3.", "sepia mode"]. */
+export const wakeParts = (t) => t.split(new RegExp(WAKE.source, "gi")).slice(1).map((s) => s.trim());
 
 const THEMES = { dark: "dark", night: "dark", light: "light", day: "light", sepia: "sepia" };
 const RULES = [
