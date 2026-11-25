@@ -149,7 +149,16 @@ function PdfPageView({ pdf, pageNumber, paras, activeIdx, activeChunk, hlEnabled
   }
   function handleLineClick(line) {
     const mid = (line.start + line.end) / 2;
-    const hit = pageData.paraRanges.find((r) => r && mid >= r.start - 10 && mid <= r.end + 10);
+    let hit = pageData.paraRanges.find((r) => r && mid >= r.start && mid <= r.end);
+    if (!hit) {
+      let best = null, bestDist = Infinity;
+      for (const r of pageData.paraRanges) {
+        if (!r) continue;
+        const dist = mid < r.start ? r.start - mid : mid - r.end;
+        if (dist < bestDist) { bestDist = dist; best = r; }
+      }
+      hit = best;
+    }
     if (hit) onSelectPara?.(hit.idx);
   }
   if (failed) return null;
@@ -312,7 +321,7 @@ function Reader() {
 
   // ---- paragraphs (memory -> IndexedDB -> extract from PDF) ----
   async function getParas(p) {
-    const key = `${id}:${p}`;
+    const key = `${id}:v3:${p}`;
     if (cache.current.has(key)) return cache.current.get(key);
     let v = null;
     try { v = await idbGet("paras", key); } catch {}
@@ -786,7 +795,7 @@ function Reader() {
         {status === "loading" && <p className="muted">Opening your PDF...</p>}
         {error && <p className="err" role="alert">{error}</p>}
         {status === "ready" && pdfRef.current && (
-          <PdfPageView pdf={pdfRef.current} pageNumber={page} paras={paras} activeIdx={idx} activeChunk={chunk} hlEnabled={hl} onSelectPara={(i) => jump(page, i)} />
+          <PdfPageView pdf={pdfRef.current} pageNumber={page} paras={paras} activeIdx={idx} activeChunk={chunk} hlEnabled={hl} onSelectPara={(i) => play(page, i, 0)} />
         )}
         {paras.length === 0 && status === "ready" && !error && (
           <p className="muted" style={{ marginTop: 12 }}>This page has no readable text (a cover, a picture or a scanned page). Use the page arrows to jump to the next page with text.</p>
