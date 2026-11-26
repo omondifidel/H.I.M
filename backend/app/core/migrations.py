@@ -16,6 +16,7 @@ STATEMENTS = [
     "ALTER TABLE transcriptions ADD COLUMN IF NOT EXISTS mixed BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE transcriptions ADD COLUMN IF NOT EXISTS chunk_seconds INTEGER",
     "ALTER TABLE transcriptions ADD COLUMN IF NOT EXISTS notes JSON NOT NULL DEFAULT '[]'",
+    "ALTER TABLE transcriptions ALTER COLUMN size TYPE BIGINT",
 ]
 
 

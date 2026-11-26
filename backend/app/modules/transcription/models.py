@@ -2,7 +2,7 @@ import datetime as dt
 import uuid
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -17,7 +17,7 @@ class Transcription(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     title: Mapped[str] = mapped_column(String(300))
     original_name: Mapped[str] = mapped_column(String(300))
-    size: Mapped[int] = mapped_column(Integer)
+    size: Mapped[int] = mapped_column(BigInteger)
     language: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # None = detect automatically
     vocabulary: Mapped[str] = mapped_column(Text, default="")
     bible: Mapped[bool] = mapped_column(Boolean, default=True)
