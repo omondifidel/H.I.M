@@ -72,6 +72,7 @@ class TranscriptOut(BaseModel):
     segments: list[Segment]
     paragraphs: list[Paragraph]
     notes: list[SermonNote] = []
+    section: str = ""
 
 
 class SermonOut(BaseModel):
@@ -88,6 +89,21 @@ class TranscriptPatch(BaseModel):
     title: Optional[str] = None
     segments: Optional[list[Segment]] = None
     notes: Optional[list[SermonNote]] = Field(default=None, max_length=2000)
+    section: Optional[str] = None
+
+
+class SermonCard(BaseModel):
+    """One finished sermon in the library's Sermons page, with where this listener is up to."""
+    id: str
+    title: str
+    speaker: str = ""
+    section: str = ""
+    duration: float
+    position: float = 0.0
+
+
+class PositionIn(BaseModel):
+    position: float = Field(ge=0)
 
 
 class EngineInfo(BaseModel):

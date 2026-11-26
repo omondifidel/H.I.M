@@ -7,6 +7,7 @@ import { clearLocalNotes, removeNote, syncNotes } from "../lib/notes";
 import { applyTheme, getTheme, THEMES } from "../lib/theme";
 import NotificationBell from "../components/NotificationBell";
 import DeepSearch from "../components/DeepSearch";
+import Shelves from "../components/Shelves";
 import { extractParagraphs, loadPdfjs } from "../lib/pdfText";
 
 const Icon = ({ d, size = 24, fill }) => (
@@ -38,6 +39,11 @@ const P = {
   mic: <path d="M12 3a3 3 0 013 3v5a3 3 0 01-6 0V6a3 3 0 013-3zM5 11a7 7 0 0014 0M12 18v3" />,
 };
 const NAV = {
+  home: <><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z" /></>,
+  pdfs: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4M9 12h6M9 16h6" /></>,
+  books: <><path d="M4.5 4h5v16h-5zM11.5 4h4v16h-4zM17 5.5l3-.8 2.7 15-3 .8z" /></>,
+  sermons: <><path d="M4 15v-3a8 8 0 0116 0v3" /><rect x="3" y="14" width="4" height="6" rx="1.5" /><rect x="17" y="14" width="4" height="6" rx="1.5" /></>,
+  more: <><circle cx="5" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="19" cy="12" r="1.3" /></>,
   library: <><path d="M5 5.5A2.5 2.5 0 017.5 3H11v18H7.5A2.5 2.5 0 015 18.5z" /><path d="M13 3h3.5A2.5 2.5 0 0119 5.5v13a2.5 2.5 0 01-2.5 2.5H13z" /><path d="M8 7h.5M16 7h.5" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
   notes: <><path d="M6 3.5h8l4 4v13H6z" /><path d="M14 3.5v4h4M9 12h6M9 16h6" /></>,
@@ -473,6 +479,9 @@ function AuthForm({ onDone }) {
 
 function Library({ onLogout, user }) {
   const [docs, setDocs] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [sermons, setSermons] = useState([]);
+  const [more, setMore] = useState(false);
   const [offline, setOffline] = useState(new Set());
   const [notes, setNotes] = useState([]);
   const [tab, setTab] = useState("library");
@@ -518,6 +527,15 @@ function Library({ onLogout, user }) {
         setMsg("Could not reach the server. Showing your saved library.");
       }
     }
+    for (const [path, set] of [["/api/sections", setSections], ["/api/sermons", setSermons]]) {
+      try {
+        const value = await api(path);
+        set(value);
+        localStorage.setItem("cache:" + path, JSON.stringify(value));
+      } catch {
+        try { set(JSON.parse(localStorage.getItem("cache:" + path) || "[]")); } catch {}
+      }
+    }
     try {
       setOffline(new Set(await idbKeys("pdfs")));
     } catch {}
@@ -544,7 +562,7 @@ function Library({ onLogout, user }) {
     load();
   }, [load]);
 
-  async function upload(e) {
+  async function upload(e, section = "") {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     setBusy(true);
@@ -552,6 +570,7 @@ function Library({ onLogout, user }) {
     try {
       const form = new FormData();
       form.append("file", file);
+      form.append("section", section);
       await api("/api/documents", { method: "POST", form });
       await load();
     } catch (err) {
@@ -585,6 +604,20 @@ function Library({ onLogout, user }) {
       setMsg(err.message);
     }
   }
+
+  async function sortInto(id, section) {
+    setDocs((items) => items.map((d) => (d.id === id ? { ...d, section } : d)));
+    try {
+      await api(`/api/documents/${id}`, { method: "PATCH", body: { section } });
+    } catch (err) {
+      setMsg(err.message);
+      load();
+    }
+  }
+
+  const sermonPosition = useCallback((id, position) => {
+    setSermons((items) => items.map((s) => (s.id === id ? { ...s, position } : s)));
+  }, []);
 
   function chooseTheme(t) {
     setTheme(t);
@@ -736,7 +769,15 @@ function Library({ onLogout, user }) {
   const displayedStreak = demoMode ? 4 : streak;
   const focusProgress = ((focusDuration * 60 - focusSeconds) / (focusDuration * 60)) * 100;
   const focusTime = `${String(Math.floor(focusSeconds / 60)).padStart(2, "0")}:${String(focusSeconds % 60).padStart(2, "0")}`;
-  const navItems = [["library", "Library", NAV.library], ["search", "Search", NAV.search], ["notes", "Notes", NAV.notes], ["offline", "Offline", NAV.offline], ["settings", "Settings", NAV.settings]];
+  const shelfTabs = [["pdfs", "PDFs", NAV.pdfs, docs.filter((d) => d.kind === "pdf").length],
+    ["books", "Books", NAV.books, docs.filter((d) => d.kind === "book").length], ["sermons", "Sermons", NAV.sermons, sermons.length]];
+  const toolTabs = [["search", "Search", NAV.search], ["notes", "Notes", NAV.notes], ["offline", "Offline", NAV.offline], ["settings", "Settings", NAV.settings]];
+  const go = (k) => { setTab(k); setMore(false); if (k === "notes") loadNotes(); };
+  const sideTab = ([k, label, d, n]) => (
+    <button key={k} className={"side-tab" + (tab === k ? " on" : "")} aria-current={tab === k ? "page" : undefined} onClick={() => go(k)}>
+      <Icon size={20} d={d} />{label}{n > 0 && <span className="side-count">{n}</span>}
+    </button>
+  );
 
   useEffect(() => { if (last) setMiniPage(last.last_page || 1); }, [last?.id, last?.last_page]);
 
@@ -813,14 +854,11 @@ function Library({ onLogout, user }) {
           <span>HIM <span>Ministries</span></span>
         </a>
         <div className="sidebar-label">YOUR SPACE</div>
-        <nav className="sidebar-nav" aria-label="Library sections">
-          {navItems.map(([k, label, d]) => (
-            <button key={k} className={"side-tab" + (tab === k ? " on" : "")} aria-current={tab === k ? "page" : undefined} onClick={() => { setTab(k); if (k === "notes") loadNotes(); }}>
-              <Icon size={20} d={d} />{label}
-              {k === "library" && docs.length > 0 && <span className="side-count">{docs.length}</span>}
-            </button>
-          ))}
-        </nav>
+        <nav className="sidebar-nav" aria-label="Your space">{sideTab(["library", "Home", NAV.home])}</nav>
+        <div className="sidebar-label sub">HIM LIBRARY</div>
+        <nav className="sidebar-nav" aria-label="HIM Library">{shelfTabs.map(sideTab)}</nav>
+        <div className="sidebar-label sub">TOOLS</div>
+        <nav className="sidebar-nav" aria-label="Tools">{toolTabs.map(sideTab)}</nav>
         <div className="sidebar-bottom">
           <div className="profile-dot">{(user?.email || "R")[0].toUpperCase()}</div>
           <div className="profile-copy"><b>{user?.email || "Reader"}</b><span>Personal library</span></div>
@@ -1108,6 +1146,11 @@ function Library({ onLogout, user }) {
         </>
       ) : null}
 
+      {(tab === "pdfs" || tab === "books" || tab === "sermons") && (
+        <Shelves kind={tab === "sermons" ? "sermon" : tab.slice(0, -1)} docs={docs} sermons={sermons} sections={sections}
+          streak={streak} setTab={go} onUpload={upload} onSection={sortInto} onSermonPosition={sermonPosition} busy={busy} />
+      )}
+
       {tab === "search" && <DeepSearch />}
 
       {tab === "notes" && (
@@ -1256,13 +1299,23 @@ function Library({ onLogout, user }) {
         </div>
       )}
 
+      {more && (
+        <div className="more-sheet" role="menu" aria-label="More">
+          {toolTabs.map(([k, label, d]) => (
+            <button key={k} role="menuitem" className={tab === k ? "on" : ""} onClick={() => go(k)}><Icon size={20} d={d} />{label}</button>
+          ))}
+        </div>
+      )}
       <nav className="tabbar" aria-label="Main">
-        {navItems.map(([k, label, d]) => (
-          <button key={k} className={"tab" + (tab === k ? " on" : "")} aria-current={tab === k ? "page" : undefined} onClick={() => { setTab(k); if (k === "notes") loadNotes(); }}>
+        {[["library", "Home", NAV.home], ...shelfTabs].map(([k, label, d]) => (
+          <button key={k} className={"tab" + (tab === k ? " on" : "")} aria-current={tab === k ? "page" : undefined} onClick={() => go(k)}>
             <Icon d={d} />
             {label}
           </button>
         ))}
+        <button className={"tab" + (more || toolTabs.some(([k]) => k === tab) ? " on" : "")} aria-expanded={more} onClick={() => setMore(!more)}>
+          <Icon d={NAV.more} />More
+        </button>
       </nav>
       </main>
     </div>

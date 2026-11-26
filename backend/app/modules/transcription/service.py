@@ -13,9 +13,10 @@ from app.modules.auth.models import User
 from app.modules.transcription import engine as engines
 from app.modules.transcription import merge
 from app.modules.search import index as search_index
-from app.modules.transcription.models import Transcription, TranscriptionChunk
-from app.modules.transcription.schemas import (EngineInfo, Paragraph, SermonOut, Segment, TranscriptionCreate,
-                                               TranscriptOut, TranscriptPatch, UploadStatus)
+from app.modules.library.service import check_section
+from app.modules.transcription.models import SermonProgress, Transcription, TranscriptionChunk
+from app.modules.transcription.schemas import (EngineInfo, Paragraph, PositionIn, SermonCard, SermonOut, Segment,
+                                               TranscriptionCreate, TranscriptOut, TranscriptPatch, UploadStatus)
 
 PART_SIZE = 8 * 1024 * 1024  # the browser sends the recording in 8 MB pieces
 MAX_PART = 16 * 1024 * 1024
@@ -148,7 +149,7 @@ def transcript(db: Session, user: User, job_id: str) -> TranscriptOut:
     segments = job.segments or []
     return TranscriptOut(id=job.id, title=job.title, duration=job.duration,
                          segments=[Segment(**s) for s in segments], paragraphs=_paragraphs(segments),
-                         notes=job.notes or [])
+                         notes=job.notes or [], section=job.section or "")
 
 
 def patch(db: Session, user: User, job_id: str, data: TranscriptPatch) -> TranscriptOut:
@@ -164,6 +165,8 @@ def patch(db: Session, user: User, job_id: str, data: TranscriptPatch) -> Transc
         job.text = merge.full_text(job.segments)
     if data.notes is not None:
         job.notes = [n.model_dump() for n in data.notes]
+    if data.section is not None:
+        job.section = check_section(data.section)
     db.commit()
     search_index.index_sermon(db, job)
     return transcript(db, user, job_id) if job.status == "done" else TranscriptOut(
@@ -173,6 +176,7 @@ def patch(db: Session, user: User, job_id: str, data: TranscriptPatch) -> Transc
 def delete_job(db: Session, user: User, job_id: str) -> None:
     job = get_owned(db, user, job_id)
     db.execute(delete(TranscriptionChunk).where(TranscriptionChunk.transcription_id == job.id))
+    db.execute(delete(SermonProgress).where(SermonProgress.transcription_id == job.id))
     db.delete(job)
     db.commit()
     search_index.remove_source(db, job_id)
@@ -210,6 +214,28 @@ def sermon(db: Session, user: User, job_id: str) -> SermonOut:
     job = _finished(db, job_id)
     return SermonOut(id=job.id, title=job.title, duration=job.duration, paragraphs=_paragraphs(job.segments or []),
                      mine=job.user_id == user.id, has_audio=original_path(job) is not None)
+
+
+def sermon_cards(db: Session, user: User) -> list[SermonCard]:
+    """Every finished sermon that still has its recording, for the library's Sermons page."""
+    jobs = db.scalars(select(Transcription).where(Transcription.status == "done", Transcription.has_audio.is_(True))
+                      .order_by(Transcription.created_at.desc())).all()
+    where = {p.transcription_id: p.position for p in
+             db.scalars(select(SermonProgress).where(SermonProgress.user_id == user.id)).all()}
+    # speaker arrives with the "Sir Elvin's sermons" search filter; until then it is simply empty
+    return [SermonCard(id=j.id, title=j.title, speaker=getattr(j, "speaker", "") or "", section=j.section or "",
+                       duration=j.duration or 0, position=where.get(j.id, 0.0)) for j in jobs]
+
+
+def save_position(db: Session, user: User, job_id: str, p: PositionIn) -> None:
+    job = _finished(db, job_id)
+    position = min(p.position, job.duration or p.position)
+    row = db.get(SermonProgress, (user.id, job.id))
+    if row is None:
+        db.add(SermonProgress(user_id=user.id, transcription_id=job.id, position=position))
+    else:
+        row.position = position
+    db.commit()
 
 
 def sermon_audio(db: Session, job_id: str) -> Path:

@@ -6,11 +6,23 @@ from app.core.database import get_db
 from app.modules.auth.deps import current_user, require_app
 from app.modules.auth.models import User
 from app.modules.transcription import service
-from app.modules.transcription.schemas import (CompleteIn, EngineInfo, SermonOut, TranscriptionCreate, TranscriptionOut,
-                                               TranscriptOut, TranscriptPatch, UploadStatus)
+from app.modules.transcription.schemas import (CompleteIn, EngineInfo, PositionIn, SermonCard, SermonOut,
+                                               TranscriptionCreate, TranscriptionOut, TranscriptOut, TranscriptPatch,
+                                               UploadStatus)
 
 router = APIRouter(prefix="/api/transcriptions", tags=["transcription"])
 stt_user = require_app("transcribe")
+sermons = APIRouter(prefix="/api/sermons", tags=["transcription"])  # the library's Sermons page, for everyone
+
+
+@sermons.get("", response_model=list[SermonCard])
+def sermon_cards(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return service.sermon_cards(db, user)
+
+
+@sermons.put("/{job_id}/position", status_code=204)
+def save_position(job_id: str, p: PositionIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    service.save_position(db, user, job_id, p)
 
 
 @router.get("/engine", response_model=EngineInfo)

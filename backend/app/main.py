@@ -22,6 +22,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.library.router import router as library_router
 from app.modules.library.tts import router as tts_router
 from app.modules.transcription.router import router as transcription_router
+from app.modules.transcription.router import sermons as sermons_router
 from app.modules.transcription.worker import worker
 
 # Importing the models registers their tables with SQLAlchemy.
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(library_router)
     app.include_router(tts_router)
     app.include_router(transcription_router)
+    app.include_router(sermons_router)
     app.include_router(admin_router)
     app.include_router(notifications_router)
     app.include_router(assistant_router)

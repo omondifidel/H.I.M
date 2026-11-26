@@ -14,10 +14,11 @@ from app.core.errors import BadRequest
 from app.modules.auth.groups import group_ids_for
 from app.modules.auth.models import User
 from app.modules.auth.service import user_apps
-from app.modules.library.models import DocumentShare
+from app.modules.library.models import Document, DocumentShare
 from app.modules.library.service import _share_condition
 from app.modules.search.models import SearchChunk
 from app.modules.search.query import Parsed, parse
+from app.modules.transcription.models import Transcription
 
 ON, OFF = "\x02", "\x03"  # highlight markers, never present in real text
 HEADLINE = f"StartSel={ON}, StopSel={OFF}, MaxWords=35, MinWords=15, MaxFragments=2, FragmentDelimiter=\" … \""
@@ -74,10 +75,18 @@ def snippet_parts(s: str) -> list[dict]:
     return parts
 
 
-def _sqlite_search(db: Session, user: User, parsed: Parsed, kind: str, limit: int) -> dict:
+def _in_section(section: str):
+    """Discipleship Stage: PDFs and sermons sorted into that section, and your notes on them."""
+    return SearchChunk.source_id.in_(select(Document.id).where(Document.section == section)
+                                     .union(select(Transcription.id).where(Transcription.section == section)))
+
+
+def _sqlite_search(db: Session, user: User, parsed: Parsed, kind: str, limit: int, section: str = "") -> dict:
     where = [_visible(db, user)]
     if kind in KINDS:
         where.append(SearchChunk.kind == kind)
+    if section:
+        where.append(_in_section(section))
     chunks = db.execute(select(SearchChunk).where(*where)).scalars().all()
 
     def _has_phrase(norm_text: str, phrase: str) -> bool:
@@ -116,18 +125,20 @@ def _sqlite_search(db: Session, user: User, parsed: Parsed, kind: str, limit: in
             "results": results}
 
 
-def search(db: Session, user: User, q: str, kind: str = "all", limit: int = 30) -> dict:
+def search(db: Session, user: User, q: str, kind: str = "all", limit: int = 30, section: str = "") -> dict:
     parsed = parse(q)
     if parsed.empty:
         raise BadRequest("Type a word, a phrase in quotes, or a Bible verse to search for")
     if kind == "all" and parsed.kind:
         kind = parsed.kind
     if db.bind is not None and db.bind.dialect.name == "sqlite":
-        return _sqlite_search(db, user, parsed, kind, limit)
+        return _sqlite_search(db, user, parsed, kind, limit, section)
     must, rank = _queries(parsed)
     where = [SearchChunk.tsv.op("@@")(must), _visible(db, user)]
     if kind in KINDS:
         where.append(SearchChunk.kind == kind)
+    if section:
+        where.append(_in_section(section))
     # rank first, then build snippets only for the rows that are returned
     top = (select(SearchChunk.id, func.ts_rank_cd(SearchChunk.tsv, rank).label("rank"))
            .where(*where).order_by(func.ts_rank_cd(SearchChunk.tsv, rank).desc(), SearchChunk.id).limit(limit).subquery())
