@@ -26,7 +26,7 @@ services:
       - key: GROQ_CHAT_MODEL
         value: openai/gpt-oss-120b   # voice Q&A model
       - key: MAX_AUDIO_MB
-        value: "600"
+        value: "4096"
       - key: STORAGE_BACKEND
         value: local         # change to s3 once you have a bucket (see GETTING-STARTED.md)
       - key: S3_ENDPOINT

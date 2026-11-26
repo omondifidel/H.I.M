@@ -56,9 +56,9 @@ def _wait(db: Session, job: Transcription, seconds: float, sleep: Callable[[floa
 
 
 def _transcribe(db: Session, job: Transcription, engine, audio, prompt: str, sleep: Callable[[float], None]) -> list[dict]:
-    attempts = 0
-    while attempts < 12:
-        attempts += 1
+    error_attempts = 0
+    rate_waits = 0
+    while error_attempts < 5 and rate_waits < 20:
         try:
             result = engine.transcribe(audio, language=job.language, prompt=prompt)
             if job.note:
@@ -66,18 +66,24 @@ def _transcribe(db: Session, job: Transcription, engine, audio, prompt: str, sle
                 db.commit()
             return result
         except RateLimited as exc:
-            wait = min(exc.retry_after + 2, 3700.0)
-            job.note = f"Waiting for the free usage limit to reset (about {math.ceil(wait / 60)} min)"
+            rate_waits += 1
+            wait = min(max(exc.retry_after, 5.0) + 3.0, 3700.0)
+            mins = max(1, math.ceil(wait / 60))
+            if wait > 180:
+                job.note = f"Hourly free limit reached — resuming automatically in about {mins} min"
+            else:
+                job.note = f"Waiting for the free usage limit to reset (about {mins} min)"
             db.commit()
             _wait(db, job, wait, sleep)
         except EngineError as exc:
-            if exc.retryable and attempts < 5:
+            error_attempts += 1
+            if exc.retryable and error_attempts < 5:
                 job.note = "The service had a hiccup, trying again"
                 db.commit()
-                _wait(db, job, 5.0 * attempts, sleep)
+                _wait(db, job, 5.0 * error_attempts, sleep)
                 continue
             raise
-    raise EngineError("The transcription service kept refusing the request. Please retry later.")
+    raise EngineError("The daily free transcription limit was reached or the service kept refusing requests. Please retry later.")
 
 
 def _process(db: Session, job: Transcription, sleep: Callable[[float], None]) -> None:
