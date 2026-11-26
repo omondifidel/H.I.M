@@ -2,13 +2,143 @@
 import { useEffect, useRef, useState } from "react";
 
 const STORAGE_KEY = "him:diary:v1";
+const VALID_VOICES = new Set(["ann", "andrew", "emma", "brian"]);
+
+function DIcon({ size = 16, d }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flex: "none" }}
+    >
+      {d}
+    </svg>
+  );
+}
+
+const ICONS = {
+  journal: (
+    <>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </>
+  ),
+  tasks: (
+    <>
+      <rect x="3" y="5" width="6" height="6" rx="1.5" />
+      <path d="m4.8 8 1.3 1.3 2.3-2.5" />
+      <path d="M13 8h8M13 16h8" />
+      <rect x="3" y="13" width="6" height="6" rx="1.5" />
+    </>
+  ),
+  dreams: (
+    <>
+      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />
+      <path d="M19 16l.9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9L19 16z" />
+    </>
+  ),
+  plans: (
+    <>
+      <rect x="3" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="9" width="7" height="5" rx="1" />
+      <rect x="14" y="16" width="7" height="5" rx="1" />
+      <path d="M6.5 8v10.5H14M6.5 11.5H14" />
+    </>
+  ),
+  notes: (
+    <>
+      <path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z" />
+      <path d="M15 3v6h6" />
+    </>
+  ),
+  alarm: (
+    <>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2.5 2.5" />
+      <path d="M5 3 2 6M22 6l-3-3" />
+    </>
+  ),
+  speaker: (
+    <>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </>
+  ),
+  stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
+  camera: (
+    <>
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </>
+  ),
+  mic: (
+    <>
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </>
+  ),
+  pin: (
+    <>
+      <path d="M12 17v5" />
+      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+    </>
+  ),
+  check: <polyline points="20 6 9 17 4 12" />,
+  grateful: (
+    <>
+      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />
+    </>
+  ),
+  peaceful: (
+    <>
+      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+      <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+    </>
+  ),
+  focused: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1.5" />
+    </>
+  ),
+  hopeful: (
+    <>
+      <path d="M12 2v4M4.93 4.93l2.83 2.83M20 12h2M2 12h2M19.07 4.93l-2.83 2.83" />
+      <path d="M7 17a5 5 0 0 1 10 0" />
+      <line x1="2" y1="20" x2="22" y2="20" />
+    </>
+  ),
+  determined: (
+    <>
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </>
+  ),
+};
 
 const MOODS = [
-  { id: "grateful", label: "Grateful", emoji: "✨" },
-  { id: "peaceful", label: "Peaceful", emoji: "🌿" },
-  { id: "focused", label: "Focused", emoji: "🎯" },
-  { id: "hopeful", label: "Hopeful", emoji: "🌅" },
-  { id: "determined", label: "Determined", emoji: "🔥" },
+  { id: "grateful", label: "Grateful" },
+  { id: "peaceful", label: "Peaceful" },
+  { id: "focused", label: "Focused" },
+  { id: "hopeful", label: "Hopeful" },
+  { id: "determined", label: "Determined" },
 ];
 
 const JOURNAL_PROMPTS = [
@@ -31,6 +161,14 @@ const STICKY_TONES = [
 
 function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function getConfiguredVoiceAndRate() {
+  if (typeof window === "undefined") return { voice: "ann", rate: 1 };
+  const rawVoice = localStorage.getItem("tts:voice") || "ann";
+  const voice = VALID_VOICES.has(rawVoice) ? rawVoice : "ann";
+  const rate = parseFloat(localStorage.getItem("tts:rate") || "1") || 1;
+  return { voice, rate };
 }
 
 function defaultDiaryState() {
@@ -164,7 +302,7 @@ function formatCountdown(iso, nowMs) {
 }
 
 export default function DiaryWorkspace({ userEmail }) {
-  const [section, setSection] = useState("journal"); // journal | tasks | dreams | plans | notes
+  const [section, setSection] = useState("journal");
   const [data, setData] = useState(defaultDiaryState);
   const [loaded, setLoaded] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -190,10 +328,14 @@ export default function DiaryWorkspace({ userEmail }) {
   const [dImage, setDImage] = useState("");
   const [dBusy, setDBusy] = useState(false);
   const [speakDream, setSpeakDream] = useState(null);
-  const [speaking, setSpeaking] = useState(false);
+  const [speakingId, setSpeakingId] = useState(null);
+  const [loadingVoiceId, setLoadingVoiceId] = useState(null);
   const [micActive, setMicActive] = useState(false);
   const [spokenTranscript, setSpokenTranscript] = useState("");
   const recRef = useRef(null);
+  const audioRef = useRef(null);
+  const audioUrlRef = useRef(null);
+  const ttsCacheRef = useRef(new Map());
 
   // Plans & WBS state
   const [planHorizon, setPlanHorizon] = useState("weekly");
@@ -217,6 +359,7 @@ export default function DiaryWorkspace({ userEmail }) {
       }
     } catch {}
     setLoaded(true);
+    return () => stopSpeech();
   }, [storageKey]);
 
   useEffect(() => {
@@ -226,7 +369,6 @@ export default function DiaryWorkspace({ userEmail }) {
     } catch {}
   }, [data, loaded, storageKey]);
 
-  // Live 10-second clock for task reminder notifications
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now();
@@ -259,26 +401,61 @@ export default function DiaryWorkspace({ userEmail }) {
     return () => clearInterval(timer);
   }, []);
 
-  function speakText(text, onDone) {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = 0.96;
-    utter.pitch = 1.02;
-    utter.onstart = () => setSpeaking(true);
-    utter.onend = () => {
-      setSpeaking(false);
-      if (onDone) onDone();
-    };
-    utter.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utter);
+  function stopSpeech() {
+    if (audioRef.current) {
+      try {
+        audioRef.current.onended = null;
+        audioRef.current.onerror = null;
+        audioRef.current.pause();
+        audioRef.current.src = "";
+      } catch {}
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      try { URL.revokeObjectURL(audioUrlRef.current); } catch {}
+      audioUrlRef.current = null;
+    }
+    setSpeakingId(null);
+    setLoadingVoiceId(null);
   }
 
-  function stopSpeech() {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
+  async function speakText(id, text, onDone) {
+    if (speakingId === id) {
+      stopSpeech();
+      return;
     }
-    setSpeaking(false);
+    stopSpeech();
+    const { voice, rate } = getConfiguredVoiceAndRate();
+    const cacheKey = `${voice}:${text}`;
+    setLoadingVoiceId(id);
+    try {
+      let blob = ttsCacheRef.current.get(cacheKey);
+      if (!blob) {
+        const res = await fetch("/api/tts/speak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, voice }),
+        });
+        if (!res.ok) throw new Error("Neural voice request failed");
+        blob = await res.blob();
+        ttsCacheRef.current.set(cacheKey, blob);
+      }
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
+      const audio = new Audio(url);
+      audio.playbackRate = rate;
+      audioRef.current = audio;
+      setLoadingVoiceId(null);
+      setSpeakingId(id);
+      audio.onended = () => {
+        stopSpeech();
+        if (onDone) onDone();
+      };
+      audio.onerror = () => stopSpeech();
+      await audio.play();
+    } catch {
+      stopSpeech();
+    }
   }
 
   function toggleVoiceAffirmation(dream) {
@@ -321,7 +498,6 @@ export default function DiaryWorkspace({ userEmail }) {
     rec.start();
   }
 
-  // ---- Handlers ----
   function addJournalEntry(e) {
     e.preventDefault();
     if (!jBody.trim()) return;
@@ -504,9 +680,12 @@ export default function DiaryWorkspace({ userEmail }) {
 
       {activeAlarm && (
         <div className="diary-alarm-banner" role="alert">
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", opacity: 0.88 }}>⏰ Scheduled Reminder Reached</div>
-            <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>{activeAlarm.title}</div>
+          <div className="row" style={{ gap: 12 }}>
+            <DIcon size={22} d={ICONS.alarm} />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", opacity: 0.88 }}>Scheduled Reminder Reached</div>
+              <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>{activeAlarm.title}</div>
+            </div>
           </div>
           <div className="diary-alarm-actions">
             <button type="button" onClick={() => snoozeAlarm(10)}>Snooze 10m</button>
@@ -526,12 +705,12 @@ export default function DiaryWorkspace({ userEmail }) {
 
       <nav className="diary-tabs" aria-label="Diary tools">
         {[
-          ["journal", "Journal", "📖"],
-          ["tasks", `Tasks (${openTasks})`, "✅"],
-          ["dreams", "Dreams", "✨"],
-          ["plans", "Plans & WBS", "🗺️"],
-          ["notes", `Notes (${data.notes.length})`, "🗒️"],
-        ].map(([id, label, icon]) => (
+          ["journal", "Journal", ICONS.journal],
+          ["tasks", `Tasks (${openTasks})`, ICONS.tasks],
+          ["dreams", "Dreams", ICONS.dreams],
+          ["plans", "Plans & WBS", ICONS.plans],
+          ["notes", `Notes (${data.notes.length})`, ICONS.notes],
+        ].map(([id, label, iconPath]) => (
           <button
             key={id}
             type="button"
@@ -539,7 +718,7 @@ export default function DiaryWorkspace({ userEmail }) {
             aria-pressed={section === id}
             onClick={() => setSection(id)}
           >
-            <span aria-hidden="true">{icon}</span>
+            <DIcon size={16} d={iconPath} />
             {label}
           </button>
         ))}
@@ -559,8 +738,15 @@ export default function DiaryWorkspace({ userEmail }) {
             </div>
             <div className="mood-row" role="group" aria-label="Current mood">
               {MOODS.map((m) => (
-                <button key={m.id} type="button" className={"mood-pill" + (jMood === m.id ? " on" : "")} onClick={() => setJMood(m.id)}>
-                  {m.emoji} {m.label}
+                <button
+                  key={m.id}
+                  type="button"
+                  className={"mood-pill" + (jMood === m.id ? " on" : "")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                  onClick={() => setJMood(m.id)}
+                >
+                  <DIcon size={14} d={ICONS[m.id]} />
+                  {m.label}
                 </button>
               ))}
             </div>
@@ -587,13 +773,22 @@ export default function DiaryWorkspace({ userEmail }) {
             <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
               <button type="button" className={"mood-pill" + (jFilter === "all" ? " on" : "")} onClick={() => setJFilter("all")}>All ({data.journal.length})</button>
               {MOODS.map((m) => (
-                <button key={m.id} type="button" className={"mood-pill" + (jFilter === m.id ? " on" : "")} onClick={() => setJFilter(m.id)}>
-                  {m.emoji} {m.label}
+                <button
+                  key={m.id}
+                  type="button"
+                  className={"mood-pill" + (jFilter === m.id ? " on" : "")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                  onClick={() => setJFilter(m.id)}
+                >
+                  <DIcon size={14} d={ICONS[m.id]} />
+                  {m.label}
                 </button>
               ))}
             </div>
             {filteredJournal.map((entry) => {
               const moodMeta = MOODS.find((m) => m.id === entry.mood) || MOODS[0];
+              const isPlaying = speakingId === entry.id;
+              const isLoading = loadingVoiceId === entry.id;
               return (
                 <article key={entry.id} className="journal-entry">
                   <div className="row between">
@@ -601,12 +796,20 @@ export default function DiaryWorkspace({ userEmail }) {
                       <span className="muted sm">{new Date(entry.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</span>
                       <h3 style={{ margin: "2px 0 0", fontSize: 17 }}>{entry.title}</h3>
                     </div>
-                    <span className="badge">{moodMeta.emoji} {moodMeta.label}</span>
+                    <span className="badge" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <DIcon size={13} d={ICONS[moodMeta.id]} />
+                      {moodMeta.label}
+                    </span>
                   </div>
                   <p className="journal-entry-body">{entry.body}</p>
                   <div className="row between" style={{ marginTop: 4 }}>
-                    <button type="button" className="diary-btn soft sm" onClick={() => speakText(`${entry.title}. ${entry.body}`)}>
-                      🔊 Listen aloud
+                    <button
+                      type="button"
+                      className="diary-btn soft sm"
+                      onClick={() => speakText(entry.id, `${entry.title}. ${entry.body}`)}
+                    >
+                      <DIcon size={14} d={isPlaying ? ICONS.stop : ICONS.speaker} />
+                      {isLoading ? "Preparing voice..." : isPlaying ? "Stop voice" : "Listen aloud"}
                     </button>
                     <button
                       type="button"
@@ -661,7 +864,7 @@ export default function DiaryWorkspace({ userEmail }) {
               return (
                 <div key={task.id} className={"task-row" + (task.done ? " done" : "")}>
                   <button type="button" className="task-check" aria-label={task.done ? "Mark incomplete" : "Mark complete"} onClick={() => toggleTask(task.id)}>
-                    {task.done ? "✓" : ""}
+                    {task.done && <DIcon size={13} d={ICONS.check} />}
                   </button>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 15, textDecoration: task.done ? "line-through" : "none" }}>{task.title}</div>
@@ -669,7 +872,8 @@ export default function DiaryWorkspace({ userEmail }) {
                       <span className={`prio-badge prio-${task.priority}`}>{task.priority}</span>
                       {task.dueAt && (
                         <span className={"rem-pill" + (countdown?.overdue && !task.done ? " overdue" : "")}>
-                          ⏰ {new Date(task.dueAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          <DIcon size={12} d={ICONS.alarm} />
+                          {new Date(task.dueAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                           {countdown && !task.done ? ` · ${countdown.label}` : ""}
                         </span>
                       )}
@@ -710,7 +914,8 @@ export default function DiaryWorkspace({ userEmail }) {
               <input className="diary-field" value={dYear} onChange={(e) => setDYear(e.target.value)} placeholder="Year" />
             </div>
             <label className="diary-btn soft" style={{ width: "100%", marginBottom: 10, cursor: "pointer" }}>
-              {dBusy ? "Processing image..." : dImage ? "✓ Vision photo attached (change)" : "📷 Upload vision photo"}
+              <DIcon size={15} d={ICONS.camera} />
+              {dBusy ? "Processing image..." : dImage ? "Vision photo attached (change)" : "Upload vision photo"}
               <input type="file" accept="image/*" hidden onChange={handleDreamPhoto} />
             </label>
             {dImage && (
@@ -735,7 +940,9 @@ export default function DiaryWorkspace({ userEmail }) {
                   {dream.image ? (
                     <img src={dream.image} alt={dream.title} />
                   ) : (
-                    <span style={{ fontSize: 42 }} aria-hidden="true">✨</span>
+                    <span style={{ color: "rgba(255,255,255,.85)" }}>
+                      <DIcon size={42} d={ICONS.dreams} />
+                    </span>
                   )}
                   <span className="dream-cat">{dream.category}</span>
                   <span className="dream-year">{dream.targetYear}</span>
@@ -753,7 +960,8 @@ export default function DiaryWorkspace({ userEmail }) {
                         setSpokenTranscript("");
                       }}
                     >
-                      🎙️ Speak it to life
+                      <DIcon size={14} d={ICONS.mic} />
+                      Speak it to life
                     </button>
                     <span className="muted sm">Spoken {dream.spokenCount || 0}×</span>
                   </div>
@@ -785,8 +993,8 @@ export default function DiaryWorkspace({ userEmail }) {
             {speakDream.image && (
               <img src={speakDream.image} alt={speakDream.title} style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 18 }} />
             )}
-            <div className={"speak-orb" + (speaking || micActive ? " active" : "")}>
-              <span style={{ fontSize: 28 }}>🎙️</span>
+            <div className={"speak-orb" + (speakingId === speakDream.id || micActive ? " active" : "")}>
+              <DIcon size={30} d={ICONS.mic} />
             </div>
             <div style={{ textAlign: "center" }}>
               <h2 style={{ margin: "0 0 8px", fontSize: 23 }}>{speakDream.title}</h2>
@@ -805,19 +1013,22 @@ export default function DiaryWorkspace({ userEmail }) {
                 className="diary-btn"
                 style={{ background: "#a855f7" }}
                 onClick={() =>
-                  speaking
-                    ? stopSpeech()
-                    : speakText(`${speakDream.title}. ${speakDream.declaration}`, () => {
-                        setData((prev) => ({
-                          ...prev,
-                          dreams: prev.dreams.map((d) =>
-                            d.id === speakDream.id ? { ...d, spokenCount: (d.spokenCount || 0) + 1 } : d
-                          ),
-                        }));
-                      })
+                  speakText(speakDream.id, `${speakDream.title}. ${speakDream.declaration}`, () => {
+                    setData((prev) => ({
+                      ...prev,
+                      dreams: prev.dreams.map((d) =>
+                        d.id === speakDream.id ? { ...d, spokenCount: (d.spokenCount || 0) + 1 } : d
+                      ),
+                    }));
+                  })
                 }
               >
-                {speaking ? "⏹ Stop Voice" : "🔊 Hear It Spoken"}
+                <DIcon size={15} d={speakingId === speakDream.id ? ICONS.stop : ICONS.speaker} />
+                {loadingVoiceId === speakDream.id
+                  ? "Preparing voice..."
+                  : speakingId === speakDream.id
+                    ? "Stop Voice"
+                    : "Hear It Spoken"}
               </button>
               <button
                 type="button"
@@ -825,7 +1036,8 @@ export default function DiaryWorkspace({ userEmail }) {
                 style={{ background: micActive ? "#ef4444" : "#ec4899" }}
                 onClick={() => toggleVoiceAffirmation(speakDream)}
               >
-                {micActive ? "⏹ Finish Speaking" : "🎤 Speak Aloud Now"}
+                <DIcon size={15} d={micActive ? ICONS.stop : ICONS.mic} />
+                {micActive ? "Finish Speaking" : "Speak Aloud Now"}
               </button>
             </div>
           </div>
@@ -879,7 +1091,12 @@ export default function DiaryWorkspace({ userEmail }) {
                     </div>
                     <span className="badge">{pct}% complete</span>
                   </div>
-                  {plan.deadline && <div className="muted sm">📅 Objective deadline: <b>{plan.deadline}</b></div>}
+                  {plan.deadline && (
+                    <div className="muted sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <DIcon size={13} d={ICONS.calendar} />
+                      Objective deadline: <b>{plan.deadline}</b>
+                    </div>
+                  )}
                   <div className="wbs-bar" aria-label={`Progress ${pct}%`}><i style={{ width: `${pct}%` }} /></div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -892,7 +1109,7 @@ export default function DiaryWorkspace({ userEmail }) {
                             style={{ borderColor: "#0f766e", background: item.done ? "#0f766e" : "transparent" }}
                             onClick={() => toggleWbsItem(plan.id, item.id)}
                           >
-                            {item.done ? "✓" : ""}
+                            {item.done && <DIcon size={13} d={ICONS.check} />}
                           </button>
                           <span className="wbs-code">{item.code}</span>
                           <span style={{ fontSize: 13.5, fontWeight: 600, textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
@@ -967,7 +1184,15 @@ export default function DiaryWorkspace({ userEmail }) {
                     <b style={{ fontSize: 15 }}>{note.title}</b>
                     <button
                       type="button"
-                      style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 14 }}
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        cursor: "pointer",
+                        color: "currentColor",
+                        opacity: note.pinned ? 1 : 0.42,
+                        display: "inline-flex",
+                        alignItems: "center",
+                      }}
                       title={note.pinned ? "Unpin" : "Pin to top"}
                       onClick={() =>
                         setData((prev) => ({
@@ -976,12 +1201,12 @@ export default function DiaryWorkspace({ userEmail }) {
                         }))
                       }
                     >
-                      {note.pinned ? "📌" : "📍"}
+                      <DIcon size={15} d={ICONS.pin} />
                     </button>
                   </div>
                   <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap", flex: 1 }}>{note.body}</p>
                   <div className="row between" style={{ paddingTop: 6 }}>
-                    <button type="button" className="diary-btn soft sm" onClick={() => promoteNoteToTask(note)}>→ Task</button>
+                    <button type="button" className="diary-btn soft sm" onClick={() => promoteNoteToTask(note)}>To Task</button>
                     <button
                       type="button"
                       className="diary-btn soft sm"
