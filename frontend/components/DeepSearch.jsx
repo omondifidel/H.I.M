@@ -63,7 +63,7 @@ export default function DeepSearch() {
         {stages.length > 0 && (
           <select className={"chip sm" + (stage ? " on" : "")} value={stage} aria-label="Discipleship stage"
             onChange={(e) => { setStage(e.target.value); if (res) run(q, kind, e.target.value); }}>
-            <option value="">Every stage</option>
+            <option value="">All discipleship stages</option>
             {stages.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
           </select>
         )}

@@ -1464,3 +1464,4 @@ body:has(.library-shell){background:var(--bg)}
   .more-sheet button{display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border:0;border-radius:11px;background:none;color:var(--text);font-size:14px;font-weight:600;text-align:left}
   .more-sheet button.on{background:var(--lavender);color:var(--lavender-text)}
 }
+.sh-chips-label{flex:none;align-self:center;margin-right:2px;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase}

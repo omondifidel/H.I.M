@@ -437,7 +437,7 @@ function Editor() {
         <input className="tin" value={title} aria-label="Title" onChange={(e) => { setTitle(e.target.value); titleRef.current = e.target.value; markDirty(); }} />
         <select className="tin section" value={section} aria-label="Library section" title="Where this sermon shows in the HIM Library"
           onChange={(e) => { const value = e.target.value; setSection(value); api(`/api/transcriptions/${id}`, { method: "PATCH", body: { section: value } }).catch((err) => setError(err.message)); }}>
-          <option value="">Library section…</option>
+          <option value="">Discipleship stage…</option>
           {sections.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
         </select>
         <span className="meta-pill">{wordCount} words · ~{readMins}m read</span>

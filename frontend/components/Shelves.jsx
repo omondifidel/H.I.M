@@ -6,11 +6,11 @@ import { api } from "../lib/api";
 
 const COLORS = ["#7B5BB5", "#3D8FD9", "#B7791F", "#D9603B", "#D6587E"]; // section dots and bars, in programme order
 const KIND = {
-  pdf: { title: "PDFs", intro: "Short teachings of 5 to 40 pages, grouped by section.", noun: "PDFs", done: "read",
+  pdf: { title: "PDFs", intro: "Short teachings of 5 to 40 pages, grouped by discipleship stage.", noun: "PDFs", done: "read",
          labels: ["Read", "Continue", "Start now"], stats: ["Read", "In progress", "Not started"] },
-  book: { title: "Books", intro: "Full-length books from the programme, grouped by section.", noun: "books", done: "finished",
+  book: { title: "Books", intro: "Full-length books from the programme, grouped by discipleship stage.", noun: "books", done: "finished",
           labels: ["Read again", "Continue", "Start now"], stats: ["Finished", "In progress", "Not started"] },
-  sermon: { title: "Sermons", intro: "Listen anywhere. Your place is saved every few seconds.", noun: "sermons", done: "finished",
+  sermon: { title: "Sermons", intro: "Grouped by discipleship stage. Your place is saved every few seconds.", noun: "sermons", done: "finished",
             labels: ["Again", "Resume", "Listen"], stats: ["Finished", "In progress", "Not started"] },
 };
 const PAGE_MINUTES = 1.3; // reading time estimate per page
@@ -253,7 +253,8 @@ export default function Shelves({ kind, docs, sermons, sections, streak, setTab,
       </section>
 
       {kind === "pdf" && groups.length > 0 && (
-        <div className="sh-chips">
+        <div className="sh-chips" role="group" aria-label="Discipleship stages">
+          <span className="sh-chips-label">Discipleship stage</span>
           <button className={"chip" + (!focus ? " on" : "")} onClick={() => setFocus("")}>All {groups.length}</button>
           {groups.map((g) => <button key={g.name} className={"chip" + (focus === g.name ? " on" : "")} onClick={() => setFocus(g.name)}>{g.short}</button>)}
         </div>
