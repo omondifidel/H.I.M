@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "../../lib/api";
 import { clock } from "../../components/DeepSearch";
+import { ScriptureText, SelectionToolbar, StudyPanel, useVersePopover } from "../../components/Study";
+import { addDiaryNote } from "../../lib/diary";
 
 function Sermon() {
   const sp = useSearchParams();
@@ -17,6 +19,16 @@ function Sermon() {
   const [now, setNow] = useState(t);
   const audioRef = useRef(null);
   const started = useRef(false);
+  const textRef = useRef(null);
+  const asked = useRef(false);
+  const verses = useVersePopover();
+  const [study, setStudy] = useState(null); // null | "summary" | "reflect" | "verses"
+  const [reflectAsk, setReflectAsk] = useState(false);
+  function nearEnd(seconds) {
+    if (asked.current || !data?.duration || seconds < data.duration - 20) return;
+    asked.current = true;
+    setReflectAsk(true);
+  }
   const saved = useRef(t);
   // your place is saved every few seconds, so the library's Sermons page can resume it
   function savePlace(seconds) {
@@ -80,18 +92,39 @@ function Sermon() {
           <audio ref={audioRef} src={audioUrl} controls preload="metadata" style={{ width: "100%" }}
             onLoadedMetadata={(e) => { if (!started.current) { started.current = true; e.currentTarget.currentTime = t; e.currentTarget.play().catch(() => {}); } }}
             onPause={(e) => savePlace(e.currentTarget.currentTime)}
-            onTimeUpdate={(e) => { const s = e.currentTarget.currentTime; setNow(s); if (Math.abs(s - saved.current) >= 5) savePlace(s); }} />
+            onEnded={(e) => nearEnd(e.currentTarget.duration)}
+            onTimeUpdate={(e) => { const s = e.currentTarget.currentTime; setNow(s); nearEnd(s); if (Math.abs(s - saved.current) >= 5) savePlace(s); }} />
         ) : <p className="muted sm">{audioNote}</p>}
       </div>
 
-      <div className="sermon-text">
+      {reflectAsk && !study && (
+        <div className="reflect-toast inline" role="status">
+          <span><b>The sermon is ending.</b> Take two minutes to reflect on it?</span>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="chip sm on" onClick={() => { setStudy("reflect"); setReflectAsk(false); }}>Reflect</button>
+            <button className="chip sm" onClick={() => setReflectAsk(false)}>Not now</button>
+          </div>
+        </div>
+      )}
+      {study ? (
+        <StudyPanel docked={false} title={data.title} tab={study} verses={verses} onClose={() => setStudy(null)}
+          target={{ key: `sermon:${data.id}`, label: "this sermon", request: async () => ({ transcription_id: data.id }) }} />
+      ) : (
+        <button className="btn ghost study-open" onClick={() => setStudy("summary")}>Study this sermon: summary, prayer points, reflection</button>
+      )}
+
+      <div className="sermon-text" ref={textRef}>
         {paras.map((p, i) => (
           <p key={i} id={`p${i}`} className={"spara" + (i === cur ? " on" : "")}>
             <button className="chip sm" onClick={() => seek(p.start)} disabled={!audioUrl} aria-label={`Play from ${clock(p.start)}`}>{clock(p.start)}</button>
-            <span>{p.text}</span>
+            <span><ScriptureText text={p.text} verses={verses} /></span>
           </p>
         ))}
       </div>
+      <SelectionToolbar containerRef={textRef} source={data.title}
+        onSave={(text) => addDiaryNote({ title: data.title, body: `“${text}”` })}
+        around={(text) => (paras.find((p) => p.text.includes(text.slice(0, 40)))?.text || "")} />
+      {verses.popover}
     </main>
   );
 }

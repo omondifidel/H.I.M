@@ -8,6 +8,8 @@ import { listNotes, newNoteId, putNote, removeNote, syncNotes } from "../../lib/
 import { extractParagraphs, loadPdfjs } from "../../lib/pdfText";
 import { applyTheme, getTheme, THEMES } from "../../lib/theme";
 import NotificationBell from "../../components/NotificationBell";
+import { SelectionToolbar, StudyPanel, useVersePopover } from "../../components/Study";
+import { findRefs } from "../../lib/scripture";
 import { useVoice } from "../../lib/useVoice";
 import { nextRate } from "../../lib/voice";
 
@@ -52,6 +54,7 @@ const P = {
   pin: <path d="M12 17v5M9 3h6l-1 7 3 3H7l3-3z" />,
   play: <path d="M7 4l13 8-13 8z" />,
   pause: <><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></>,
+  study: <><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2zM4 19V5" /><path d="M9 8h6M9 12h4" /></>,
 };
 const BARS = [5, 9, 14, 8, 16, 11, 6, 13, 18, 10, 7, 15, 12, 20, 9, 6, 14, 17, 8, 12, 19, 10, 5, 13, 16, 7, 11, 15, 9, 6, 12, 18, 8, 14, 10, 7, 13, 16, 9, 5, 11, 14, 8];
 // Human-sounding voices (Edge "Natural", Google, neural). Old offline voices like "Microsoft David" sound robotic.
@@ -62,7 +65,36 @@ const localDayKey = () => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
-function PdfPageView({ pdf, pageNumber, paras, activeIdx, activeChunk, hlEnabled, onSelectPara }) {
+/** The PDF's own table of contents, as [{ title, page }] (many PDFs have none). */
+async function loadChapters(pdf) {
+  try {
+    const out = [];
+    for (const item of ((await pdf.getOutline()) || []).slice(0, 300)) {
+      try {
+        let dest = item.dest;
+        if (typeof dest === "string") dest = await pdf.getDestination(dest);
+        if (Array.isArray(dest) && dest[0]) out.push({ title: (item.title || "").trim(), page: (await pdf.getPageIndex(dest[0])) + 1 });
+      } catch {}
+    }
+    return out.sort((a, b) => a.page - b.page).filter((c, i, a) => c.title && (!i || c.page !== a[i - 1].page));
+  } catch { return []; }
+}
+
+const MAX_STUDY_PAGES = 30;
+/** The chapter around a page, or the next few pages when the PDF has no chapters. */
+function rangeFor(page, chapters, numPages) {
+  let i = -1;
+  chapters.forEach((c, k) => { if (c.page <= page) i = k; });
+  if (i >= 0) {
+    const a = chapters[i].page;
+    const end = Math.max(a, (chapters[i + 1]?.page ?? numPages + 1) - 1);
+    return { a, b: Math.min(end, a + MAX_STUDY_PAGES - 1), label: chapters[i].title, chapter: true };
+  }
+  const a = Math.max(1, page), b = Math.min(numPages || page, page + 4);
+  return { a, b, label: a === b ? `page ${a}` : `pages ${a}–${b}`, chapter: false };
+}
+
+function PdfPageView({ pdf, pageNumber, paras, activeIdx, activeChunk, hlEnabled, onSelectPara, verses }) {
   const canvasRef = useRef(null);
   const [failed, setFailed] = useState(false);
   const [pageData, setPageData] = useState({ lines: [], paraRanges: [] });
@@ -179,6 +211,25 @@ function PdfPageView({ pdf, pageNumber, paras, activeIdx, activeChunk, hlEnabled
           <span key={"hl-" + l.idx} id={k === 0 ? "p" + activeIdx : undefined} className="pdf-line-hl"
             style={{ top: `${l.top}%`, height: `${l.height}%`, left: `${Math.max(1.5, l.left - 0.5)}%`, width: `${Math.min(97, l.right - l.left + 1)}%` }} />
         ))}
+      </div>
+      {/* invisible text over the page, so sentences can be highlighted; a plain click still reads from that line */}
+      <svg className="pdf-text-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {pageData.lines.map((l) => (
+          <text key={"t-" + l.idx} x={l.left} y={l.top + l.height * 0.8} fontSize={l.height * 0.82}
+            textLength={Math.max(1, l.right - l.left)} lengthAdjust="spacingAndGlyphs"
+            onClick={() => { if (!window.getSelection()?.toString().trim()) handleLineClick(l); }}>{l.text}</text>
+        ))}
+      </svg>
+      <div className="pdf-ref-layer">
+        {/* ponytail: a reference split across two lines is not linked; join lines first if books show many */}
+        {pageData.lines.flatMap((l) => {
+          const len = l.text.length || 1, w = l.right - l.left;
+          return findRefs(l.text).map((r) => (
+            <button key={`r-${l.idx}-${r.start}`} type="button" className="pdf-ref" aria-label={`Open ${r.ref}`} title={r.ref}
+              style={{ top: `${l.top}%`, height: `${l.height}%`, left: `${l.left + (r.start / len) * w}%`, width: `${((r.end - r.start) / len) * w}%` }}
+              onClick={(e) => verses?.open(r.ref, e.currentTarget)} onMouseEnter={(e) => verses?.hover(r.ref, e.currentTarget)} onMouseLeave={() => verses?.unhover()} />
+          ));
+        })}
       </div>
     </figure>
   );
@@ -299,7 +350,15 @@ function Reader() {
   const [rate, setRate] = useState(1);
   const [voiceURI, setVoiceURI] = useState("ann");
   const [hl, setHl] = useState(true);
-  const [panel, setPanel] = useState(null); // null | "notes" | "voice"
+  const [panel, setPanel] = useState(null); // null | "notes" | "voice" | "study"
+  const [chapters, setChapters] = useState([]);
+  const [studyRange, setStudyRange] = useState(null);
+  const [studyTab, setStudyTab] = useState("summary");
+  const [reflectAsk, setReflectAsk] = useState(null); // the chapter just finished
+  const textRef = useRef(null);
+  const lastPageRef = useRef(null);
+  const askedEnd = useRef(false);
+  const verses = useVersePopover();
   const [sleepMin, setSleepMin] = useState(0);
   const [theme, setTheme] = useState("light");
 
@@ -727,6 +786,38 @@ function Reader() {
     await persistDraft();
     setPanel(null);
   }
+  // ---- study: summaries, reflection, highlights ----
+  function openStudy(tab = "summary", range = rangeFor(pos.current.page, chapters, numRef.current)) {
+    setStudyRange(range);
+    setStudyTab(tab);
+    setPanel("study");
+  }
+  const studyTarget = studyRange && {
+    key: `${id}:${studyRange.a}-${studyRange.b}`,
+    label: studyRange.label,
+    request: async () => {
+      const context = [];
+      for (let q = studyRange.a; q <= studyRange.b; q++) for (const t of await getParas(q)) context.push(`[page ${q}] ${t}`);
+      return { document_id: id, context };
+    },
+  };
+  function paraOf(text) {
+    const probe = text.slice(0, 40).toLowerCase();
+    return paras.findIndex((t) => t.toLowerCase().includes(probe));
+  }
+  async function saveHighlight(text) {
+    const pi = paraOf(text);
+    await putNote({ id: newNoteId(), document_id: id, page: pos.current.page, paragraph: pi >= 0 ? pi : null,
+                    body: `“${text}”`, updated_at: new Date().toISOString(), deleted: false });
+    await refreshNotes();
+    clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(runSync, 1500);
+  }
+  function aroundText(text) {
+    const pi = paraOf(text);
+    return pi >= 0 ? paras.slice(Math.max(0, pi - 1), pi + 2).join("\n") : paras.join("\n");
+  }
+
   function closePanel() {
     if (panel === "notes") closeNotes();
     else setPanel(null);
@@ -832,6 +923,7 @@ function Reader() {
         if (dead) return;
         pdfRef.current = pdf;
         numRef.current = pdf.numPages;
+        loadChapters(pdf).then((c) => { if (!dead) setChapters(c); });
         setNumPages(pdf.numPages);
         localStorage.setItem("last", id);
         localStorage.setItem("pages:" + id, String(pdf.numPages));
@@ -891,6 +983,21 @@ function Reader() {
   }, [page, idx, status]);
 
   useEffect(() => { setPageInput(String(page)); }, [page]);
+
+  // ---- reflection prompts: when you read past the end of a chapter, or reach the end of the book ----
+  useEffect(() => {
+    if (status !== "ready") return;
+    const prev = lastPageRef.current;
+    lastPageRef.current = page;
+    if (prev == null || page <= prev || page - prev > 3 || !chapters.length) return; // a jump is not "finished"
+    const was = rangeFor(prev, chapters, numPages);
+    if (page > was.b) setReflectAsk(was);
+  }, [page, status, chapters]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (status !== "ready" || askedEnd.current || page !== numPages || !paras.length || idx < paras.length - 1) return;
+    askedEnd.current = true;
+    setReflectAsk(rangeFor(page, chapters, numPages).chapter ? rangeFor(page, chapters, numPages) : { a: Math.max(1, numPages - 4), b: numPages, label: "the book", chapter: false });
+  }, [page, idx, paras, status]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setSeekPage(page); }, [page]);
 
   // ---- keep the current paragraph in view ----
@@ -953,11 +1060,11 @@ function Reader() {
 
       <div className="reader-stage">
         {status === "ready" && <PageRail pdf={pdfRef.current} numPages={numPages} currentPage={page} onSelect={(p) => goPage(p)} />}
-        <main className={"rtext" + (panel === "notes" ? " pad" : "")}>
+        <main ref={textRef} className={"rtext" + (panel === "notes" || panel === "study" ? " pad" : "")}>
         {status === "loading" && <p className="muted">Opening your PDF...</p>}
         {error && <p className="err" role="alert">{error}</p>}
         {status === "ready" && pdfRef.current && (
-          <PdfPageView pdf={pdfRef.current} pageNumber={page} paras={paras} activeIdx={idx} activeChunk={chunk} hlEnabled={hl} onSelectPara={(i) => play(page, i, 0)} />
+          <PdfPageView pdf={pdfRef.current} pageNumber={page} paras={paras} activeIdx={idx} activeChunk={chunk} hlEnabled={hl} onSelectPara={(i) => play(page, i, 0)} verses={verses} />
         )}
         {paras.length === 0 && status === "ready" && !error && (
           <p className="muted" style={{ marginTop: 12 }}>This page has no readable text (a cover, a picture or a scanned page). Use the page arrows to jump to the next page with text.</p>
@@ -967,7 +1074,10 @@ function Reader() {
 
       <div className="right-tray-dock">
         {!panel && status === "ready" && (
-          <button className="fab2 docked-pencil" aria-label="Open notes" title="Open notes" onClick={openNotes}><Icon d={P.pencil} /></button>
+          <div className="dock-fabs">
+            <button className="fab2 docked-pencil" aria-label="Study: summary, reflection and verses" title="Study: summary, reflection and verses" onClick={() => openStudy()}><Icon d={P.study} /></button>
+            <button className="fab2 docked-pencil" aria-label="Open notes" title="Open notes" onClick={openNotes}><Icon d={P.pencil} /></button>
+          </div>
         )}
 
         <div className={"player right-tray" + (trayCompact ? " compact" : "")} style={{ "--tray-w": `${trayWidth}px` }}>
@@ -1015,6 +1125,21 @@ function Reader() {
       </div>
 
       {panel === "voice" && <button className="scrim" aria-label="Close" onClick={closePanel} />}
+
+      {panel === "study" && studyTarget && (
+        <StudyPanel title={title} target={studyTarget} tab={studyTab} verses={verses} onClose={() => setPanel(null)} />
+      )}
+      {reflectAsk && panel !== "study" && (
+        <div className="reflect-toast" role="status">
+          <span><b>You finished {reflectAsk.label}.</b> Take two minutes to reflect?</span>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="chip sm on" onClick={() => { openStudy("reflect", reflectAsk); setReflectAsk(null); }}>Reflect</button>
+            <button className="chip sm" onClick={() => setReflectAsk(null)}>Not now</button>
+          </div>
+        </div>
+      )}
+      <SelectionToolbar containerRef={textRef} onSave={saveHighlight} source={title} around={aroundText} />
+      {verses.popover}
 
       {panel === "notes" && (
         <div className={"sheet notes-docked" + (trayCompact ? " tray-min-mode" : "")} style={{ "--tray-w": `${trayWidth}px` }} role="dialog" aria-label="Notes">
