@@ -65,11 +65,12 @@ def index_document(db: Session, doc_id: str) -> None:
     pages = pdf_pages(data)
     doc.pages = len(pages)  # the library sorts short teachings (PDFs) from full books by this
     doc.author = doc.author or pdf_author(data)
-    if not doc.section or not doc.doc_type:  # never undo what the owner chose
+    if not doc.section or not doc.doc_type or not doc.groups:  # never undo what the owner chose
         found = sorter.classify(doc.title, pages)
         doc.section = doc.section or found.section
+        doc.groups = doc.groups or found.groups
         doc.doc_type = doc.doc_type or (found.kind if found.kind in ("sermon", "notes") else "")
-        log.info("sorted %r: %s / %s (%s) %s", doc.title, found.kind, found.section or "-", found.by, found.reason)
+        log.info("sorted %r: %s / %s %s (%s) %s", doc.title, found.kind, found.section or "-", found.groups, found.by, found.reason)
     db.execute(delete(SearchChunk).where(SearchChunk.kind == "book", SearchChunk.source_id == doc_id))
     rows = [SearchChunk(kind="book", source_id=doc.id, user_id=doc.user_id, title=doc.title, page=n, text=t)
             for n, t in enumerate(pages, 1) if t]

@@ -17,6 +17,7 @@ const KIND = {
 };
 export const SHELF_KIND = { pdfs: "pdf", books: "book", sermons: "sermon", studynotes: "notes" }; // tab -> kind
 const TYPES = [["pdf", "PDF"], ["book", "Book"], ["sermon", "Sermon"], ["notes", "Notes"]];
+const groupLabel = (g) => g.replace(" / ", ": "); // "Warfare / Men" -> "Warfare: Men"
 const PAGE_MINUTES = 1.3; // reading time estimate per page
 const pct = (f) => Math.round(f * 100);
 const hm = (s) => { const m = s > 0 ? Math.max(1, Math.round(s / 60)) : 0; return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`; };
@@ -28,14 +29,14 @@ function docItem(d) {
   const frac = status === "done" ? 1 : status === "going" && pages ? d.last_page / pages : 0;
   const size = pages ? `${pages} pages · ${Math.max(1, Math.round(pages * PAGE_MINUTES))} min` : "Counting pages…";
   return { id: d.id, title: d.title.replace(/\.pdf$/i, ""), section: d.section, author: d.author, pages, status, frac,
-           href: `/reader/?id=${d.id}`, mine: !d.shared, last: d.last_page, kind: d.kind, doc: true, position: 0, duration: 0,
+           href: `/reader/?id=${d.id}`, mine: !d.shared, last: d.last_page, kind: d.kind, groups: d.groups || [], doc: true, position: 0, duration: 0,
            meta: status === "going" ? `${size} · ${pct(frac)}% read` : size };
 }
 
 function sermonItem(s) {
   const status = s.duration && s.position >= s.duration - 20 ? "done" : s.position > 5 ? "going" : "new";
   const frac = status === "done" ? 1 : s.duration ? s.position / s.duration : 0;
-  return { id: s.id, title: s.title, section: s.section, status, frac, position: s.position, duration: s.duration,
+  return { id: s.id, title: s.title, section: s.section, groups: [], status, frac, position: s.position, duration: s.duration,
            href: `/sermon/?id=${s.id}&t=${status === "going" ? Math.floor(s.position) : 0}`,
            meta: `${s.speaker ? s.speaker + " · " : ""}${hm(s.duration)}`,
            state: status === "done" ? "Finished" : status === "going" ? `${pct(frac)}% · ${hm(s.duration - s.position)} left` : "Not started" };
@@ -62,7 +63,23 @@ const Bar = ({ item, color }) => (
   <div className="sh-bar"><i style={{ width: `${pct(item.frac)}%`, background: item.status === "done" ? "var(--good)" : color }} /></div>
 );
 
-function SortPick({ item, sections, onSection, onKind }) {
+const Tags = ({ item }) => item.groups.length > 0 && (
+  <span className="sh-tags">{item.groups.map((g) => <i key={g}>{groupLabel(g)}</i>)}</span>
+);
+
+function GroupPick({ item, groups, onGroups }) {
+  const toggle = (g) => onGroups(item.id, item.groups.includes(g) ? item.groups.filter((x) => x !== g) : [...item.groups, g]);
+  return (
+    <details className="sh-groups">
+      <summary>Groups ({item.groups.length})</summary>
+      {groups.map((g) => (
+        <label key={g}><input type="checkbox" checked={item.groups.includes(g)} onChange={() => toggle(g)} />{groupLabel(g)}</label>
+      ))}
+    </details>
+  );
+}
+
+function SortPick({ item, sections, onSection, onKind, groups, onGroups }) {
   return (
     <span className="sh-picks">
       <select className="sh-sort" value={item.section || ""} aria-label={`Section for ${item.title}`} onChange={(e) => onSection(item.id, e.target.value)}>
@@ -72,25 +89,27 @@ function SortPick({ item, sections, onSection, onKind }) {
       <select className="sh-sort" value={item.kind} aria-label={`Type of ${item.title}`} onChange={(e) => onKind(item.id, e.target.value)}>
         {TYPES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
       </select>
+      <GroupPick item={item} groups={groups} onGroups={onGroups} />
     </span>
   );
 }
 
-function Row({ item, kind, color, arrange, sections, onSection, onKind }) {
+function Row({ item, kind, color, arrange, sections, onSection, onKind, groups, onGroups }) {
   return (
     <div className="sh-row" style={{ "--c": color }}>
       <span className="sh-tile"><Svg size={18} d={DOC} /></span>
       <div className="sh-row-main">
         <Link href={item.href} className="sh-row-title">{item.title}</Link>
         <small>{item.meta}</small>
-        {arrange && item.mine ? <SortPick item={item} sections={sections} onSection={onSection} onKind={onKind} /> : <Bar item={item} color={color} />}
+        <Tags item={item} />
+        {arrange && item.mine ? <SortPick item={item} sections={sections} onSection={onSection} onKind={onKind} groups={groups} onGroups={onGroups} /> : <Bar item={item} color={color} />}
       </div>
       <Action item={item} kind={kind} />
     </div>
   );
 }
 
-function Cover({ item, color, index, arrange, sections, onSection, onKind }) {
+function Cover({ item, color, index, arrange, sections, onSection, onKind, groups, onGroups }) {
   return (
     <div className="sh-book" style={{ "--c": color }}>
       <Link href={item.href} className={"sh-cover" + (index % 2 ? " deep" : "")}>
@@ -99,8 +118,9 @@ function Cover({ item, color, index, arrange, sections, onSection, onKind }) {
         {item.status === "done" && <span className="sh-check"><Svg size={13} d={CHECK} /></span>}
       </Link>
       <Bar item={item} color={color} />
+      <Tags item={item} />
       <small className="sh-book-meta">{item.status === "done" ? "Finished" : item.status === "going" ? `${pct(item.frac)}% read` : "Not started"}{item.pages ? ` · ${item.pages} pages` : ""}</small>
-      {arrange && item.mine ? <SortPick item={item} sections={sections} onSection={onSection} onKind={onKind} /> : <Action item={item} kind="book" />}
+      {arrange && item.mine ? <SortPick item={item} sections={sections} onSection={onSection} onKind={onKind} groups={groups} onGroups={onGroups} /> : <Action item={item} kind="book" />}
     </div>
   );
 }
@@ -176,13 +196,16 @@ function MiniPlayer({ item, onPosition }) {
   );
 }
 
-export default function Shelves({ kind, docs, sermons, sections, streak, setTab, onUpload, onSection, onKind, onSermonPosition, busy }) {
+export default function Shelves({ kind, docs, sermons, sections, groupList = [], streak, setTab, onUpload, onSection, onKind, onGroups, onSermonPosition, busy }) {
   const [focus, setFocus] = useState("");
   const [arrange, setArrange] = useState(false);
-  useEffect(() => { setFocus(""); setArrange(false); }, [kind]);
+  const [group, setGroup] = useState(""); // show only what is for this group (Warfare: Men...)
+  useEffect(() => { setFocus(""); setArrange(false); setGroup(""); }, [kind]);
   const K = KIND[kind];
   const written = docs.filter((d) => d.kind === kind).map(docItem); // sermons can also be uploaded as PDFs
-  const items = kind === "sermon" ? [...sermons.map(sermonItem), ...written] : written;
+  const all = kind === "sermon" ? [...sermons.map(sermonItem), ...written] : written;
+  const inUse = groupList.filter((g) => all.some((i) => i.groups.includes(g)));
+  const items = group ? all.filter((i) => i.groups.includes(group)) : all;
   const colorOf = (name) => { const i = sections.findIndex((s) => s.name === name); return i < 0 ? "var(--muted)" : COLORS[i % COLORS.length]; };
   const known = new Set(sections.map((s) => s.name));
   const groups = [...sections, { name: "Not sorted yet", short: "Not sorted" }]
@@ -218,9 +241,9 @@ export default function Shelves({ kind, docs, sermons, sections, streak, setTab,
   };
   const body = (g) => {
     const list = focus ? g.items : g.items.slice(0, kind === "book" ? 12 : 6);
-    if (kind === "book") return <div className={"sh-shelf" + (focus ? " wrap" : "")}>{list.map((it, n) => <Cover key={it.id} item={it} index={n} color={g.color} arrange={arrange} sections={sections} onSection={onSection} onKind={onKind} />)}</div>;
+    if (kind === "book") return <div className={"sh-shelf" + (focus ? " wrap" : "")}>{list.map((it, n) => <Cover key={it.id} item={it} index={n} color={g.color} arrange={arrange} sections={sections} onSection={onSection} onKind={onKind} groups={groupList} onGroups={onGroups} />)}</div>;
     return <div className="sh-grid">{list.map((it) => (kind === "sermon" && !it.doc ? <SermonCard key={it.id} item={it} color={g.color} />
-      : <Row key={it.id} item={it} kind={kind === "sermon" ? "pdf" : kind} color={g.color} arrange={arrange} sections={sections} onSection={onSection} onKind={onKind} />))}</div>;
+      : <Row key={it.id} item={it} kind={kind === "sermon" ? "pdf" : kind} color={g.color} arrange={arrange} sections={sections} onSection={onSection} onKind={onKind} groups={groupList} onGroups={onGroups} />))}</div>;
   };
 
   return (
@@ -270,10 +293,17 @@ export default function Shelves({ kind, docs, sermons, sections, streak, setTab,
           {groups.map((g) => <button key={g.name} className={"chip" + (focus === g.name ? " on" : "")} onClick={() => setFocus(g.name)}>{g.short}</button>)}
         </div>
       )}
+      {inUse.length > 0 && (
+        <div className="sh-chips" role="group" aria-label="Groups">
+          <span className="sh-chips-label">Group</span>
+          <button className={"chip" + (!group ? " on" : "")} aria-pressed={!group} onClick={() => setGroup("")}>Everyone</button>
+          {inUse.map((g) => <button key={g} className={"chip" + (group === g ? " on" : "")} aria-pressed={group === g} onClick={() => setGroup(g)}>{groupLabel(g)}</button>)}
+        </div>
+      )}
       {canArrange && (
         <div className="sh-arrange">
           <button className={"chip sm" + (arrange ? " on" : "")} aria-pressed={arrange} onClick={() => setArrange(!arrange)}>{arrange ? "Done sorting" : "Sort into sections"}</button>
-          {arrange && <span className="muted sm">New uploads are sorted for you. Fix the stage or type under any of your {K.noun}. Shared ones are sorted by their owner.</span>}
+          {arrange && <span className="muted sm">New uploads are sorted for you. Fix the stage, type or groups under any of your {K.noun}. Shared ones are sorted by their owner.</span>}
         </div>
       )}
 

@@ -13,7 +13,7 @@ from app.core.storage import get_storage
 from app.core.utils import as_utc, utcnow
 from app.modules.auth.groups import group_ids_for
 from app.modules.auth.models import User
-from app.modules.library.models import BOOK_PAGES, DOC_TYPES, SECTION_NAMES, Document, DocumentProgress, DocumentShare, Note
+from app.modules.library.models import BOOK_PAGES, DOC_TYPES, GROUPS, SECTION_NAMES, Document, DocumentProgress, DocumentShare, Note
 from app.modules.library.schemas import DocumentOut, DocumentPatch, NoteIn, ProgressIn
 from app.modules.search import index as search_index
 from app.modules.usage import service as usage
@@ -58,7 +58,7 @@ def kind_of(doc: Document) -> str:
 
 def _out(doc: Document, page: int, paragraph: int, shared: bool) -> DocumentOut:
     return DocumentOut(id=doc.id, title=doc.title, size=doc.size, created_at=doc.created_at, last_page=page,
-                       last_paragraph=paragraph, shared=shared, section=doc.section or "", pages=doc.pages or 0,
+                       last_paragraph=paragraph, shared=shared, section=doc.section or "", groups=doc.groups or [], pages=doc.pages or 0,
                        author=doc.author or "", kind=kind_of(doc))
 
 
@@ -100,6 +100,10 @@ def patch_document(db: Session, user: User, doc_id: str, p: DocumentPatch) -> Do
         if p.kind not in DOC_TYPES:
             raise Invalid("Unknown type")
         doc.doc_type = p.kind
+    if p.groups is not None:
+        if set(p.groups) - set(GROUPS):
+            raise Invalid("Unknown group")
+        doc.groups = [g for g in GROUPS if g in p.groups]
     if p.author is not None:
         doc.author = p.author.strip()[:200]
     db.commit()

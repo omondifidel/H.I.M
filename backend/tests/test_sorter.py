@@ -44,3 +44,22 @@ def test_kind_prefers_stored_type():
     assert kind_of(Document(pages=100, doc_type="")) == "book"
     assert kind_of(Document(pages=5, doc_type="")) == "pdf"
     assert kind_of(Document(pages=100, doc_type="notes")) == "notes"
+
+
+def test_groups_can_be_several_and_follow_the_text():
+    pages = ["Prayers for your wife and children, for your marriage and your home and family. "
+             "The family foundation and the household must be covered."] * 4
+    s = sorter.classify("Warfare and the Home", pages)
+    assert "Warfare / Wives and Children" in s.groups and "Intercession / Family" in s.groups
+    assert sorter.classify("Untitled", ["nothing relevant here"]).groups == []
+
+
+def test_syllabus_names_the_groups_despite_messy_file_names():
+    assert sorter.syllabus_groups("Power_to_Disgrace_the_Oppressor_D_K_Olukoya_Olukoya,_D_K_z_lib_o.pdf") == [
+        "Intercession / Family", "Intercession / Welfare of others", "Warfare / The Afflicted"]
+    assert sorter.syllabus_groups("101 Weapons of Spiritual Warfar - D. K. Olukoya-1.pdf") == [
+        "Intercession / Family", "Intercession / Kings and Authority", "Intercession / Welfare of others"]
+    assert sorter.syllabus_groups("Violence_Against_Negative_Voices_Shade_Olukoya_Olukoya,_Shad.pdf")  # syllabus typo
+    assert sorter.syllabus_groups("A Book Nobody Listed.pdf") == []
+    s = sorter.classify("D. K. Olukoya; - Choosing Your Life Partner.pdf", ["prayer"])
+    assert s.groups == ["Warfare / Men", "Warfare / Wives and Children"] and s.by.endswith("+syllabus")

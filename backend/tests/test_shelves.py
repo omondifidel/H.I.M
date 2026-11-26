@@ -57,6 +57,11 @@ def test_owner_sorts_into_a_known_section_only(db):
         library.patch_document(session, pastor, "d-short", DocumentPatch(section="Made up"))
     with pytest.raises(Exception):  # a reader it was shared with may not re-sort the owner's PDF
         library.patch_document(session, member, "d-short", DocumentPatch(section="Faith"))
+    out = library.patch_document(session, pastor, "d-short", DocumentPatch(
+        groups=["Warfare / Men", "Intercession / Family"], kind="notes"))
+    assert (out.groups, out.kind) == (["Intercession / Family", "Warfare / Men"], "notes")  # kept in list order
+    with pytest.raises(Invalid):
+        library.patch_document(session, pastor, "d-short", DocumentPatch(groups=["Made up"]))
 
 
 def test_sermon_progress_is_per_listener_and_capped(db):

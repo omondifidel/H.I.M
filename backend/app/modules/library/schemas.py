@@ -14,6 +14,7 @@ class DocumentOut(BaseModel):
     last_paragraph: int
     shared: bool = False  # true when somebody else owns it and shared it with you
     section: str = ""
+    groups: list[str] = []
     pages: int = 0  # 0 = not read yet
     author: str = ""
     kind: str = "pdf"  # "pdf" (short teaching), "book" (more than BOOK_PAGES pages), "sermon" or "notes"
@@ -23,6 +24,7 @@ class DocumentPatch(BaseModel):
     section: Optional[str] = None
     author: Optional[str] = None
     kind: Optional[str] = None
+    groups: Optional[list[str]] = None
 
 
 class ProgressIn(BaseModel):

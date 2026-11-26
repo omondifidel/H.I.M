@@ -480,6 +480,7 @@ function AuthForm({ onDone }) {
 function Library({ onLogout, user }) {
   const [docs, setDocs] = useState([]);
   const [sections, setSections] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [sermons, setSermons] = useState([]);
   const [more, setMore] = useState(false);
   const [offline, setOffline] = useState(new Set());
@@ -527,7 +528,7 @@ function Library({ onLogout, user }) {
         setMsg("Could not reach the server. Showing your saved library.");
       }
     }
-    for (const [path, set] of [["/api/sections", setSections], ["/api/sermons", setSermons]]) {
+    for (const [path, set] of [["/api/sections", setSections], ["/api/groups", setGroups], ["/api/sermons", setSermons]]) {
       try {
         const value = await api(path);
         set(value);
@@ -605,6 +606,16 @@ function Library({ onLogout, user }) {
       await load();
     } catch (err) {
       setMsg(err.message);
+    }
+  }
+
+  async function regroup(id, groups) {
+    setDocs((items) => items.map((d) => (d.id === id ? { ...d, groups } : d)));
+    try {
+      await api(`/api/documents/${id}`, { method: "PATCH", body: { groups } });
+    } catch (err) {
+      setMsg(err.message);
+      load();
     }
   }
 
@@ -1162,8 +1173,8 @@ function Library({ onLogout, user }) {
       ) : null}
 
       {SHELF_KIND[tab] && (
-        <Shelves kind={SHELF_KIND[tab]} docs={docs} sermons={sermons} sections={sections}
-          streak={streak} setTab={go} onUpload={upload} onSection={sortInto} onKind={retype} onSermonPosition={sermonPosition} busy={busy} />
+        <Shelves kind={SHELF_KIND[tab]} docs={docs} sermons={sermons} sections={sections} groupList={groups}
+          streak={streak} setTab={go} onUpload={upload} onSection={sortInto} onKind={retype} onGroups={regroup} onSermonPosition={sermonPosition} busy={busy} />
       )}
 
       {tab === "search" && <DeepSearch />}
