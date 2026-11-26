@@ -257,18 +257,10 @@ h1,h2{margin:0}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes shake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media (min-width:900px){
-  .authx{grid-template-columns:1.15fr 1fr}
-  .brand{padding:56px 64px;background:var(--surface);border-right:1px solid var(--line);gap:34px}
-  .art{display:none}
-  .ah{font-size:52px;letter-spacing:-1.6px;max-width:520px}
-  .as{font-size:18px;max-width:460px}
-  .feats{display:flex}
-  .bars{display:flex}
-  .only-m{display:none}
-  .only-d{display:block}
-  .seg.only-d{display:flex}
-  .formside{align-items:center;padding:48px}
+@media (min-width:600px){
+  .authx{max-width:480px;margin:0 auto;padding:24px 0 40px;align-content:center}
+  .brand{padding:28px 24px 4px}
+  .formside{padding:20px 24px 28px}
 }
 @media (prefers-reduced-motion:reduce){
   .authx *{animation:none!important;transition:none!important}
@@ -1011,7 +1003,7 @@ body:has(.library-shell){background:var(--bg)}
     border-radius:20px;padding:12px 16px 14px;
     box-shadow:0 14px 38px rgba(15,23,42,.14);
   }
-  .reader-shell .player.right-tray.compact{width:250px;padding:10px 14px}
+  .reader-shell .player.right-tray.compact{width:var(--tray-w,340px);padding:10px 16px}
   .reader-shell .fab2{right:24px;bottom:246px}
 }
 .tray-resizer{position:absolute;left:0;top:14px;bottom:14px;width:7px;cursor:ew-resize;border-radius:4px}
@@ -1046,18 +1038,18 @@ body:has(.library-shell){background:var(--bg)}
 
 @media(min-width:900px){
   .sheet.notes-docked{
-    left:auto;right:20px;bottom:254px;
-    width:min(380px,calc(100vw - 40px));
-    height:auto;max-height:calc(100vh - 330px);
+    top:68px;left:auto;right:20px;bottom:238px;
+    width:var(--tray-w,340px);
+    height:auto;max-height:none;
     border:1px solid var(--line);border-radius:20px;
-    padding:12px 16px 14px;
-    box-shadow:0 16px 42px rgba(15,23,42,.16);
+    padding:14px 16px 14px;
+    box-shadow:0 16px 42px rgba(15,23,42,.14);
     z-index:7;
   }
-  .sheet.notes-docked.tray-min-mode{bottom:142px;max-height:calc(100vh - 218px)}
+  .sheet.notes-docked.tray-min-mode{top:68px;bottom:124px;max-height:none}
   .sheet.notes-docked .grab{display:none}
-  .sheet.notes-docked .sh{font-size:17px}
-  .sheet.notes-docked .noteArea{height:92px;font-size:14px;padding:10px 12px}
+  .sheet.notes-docked .sh{font-size:18px}
+  .sheet.notes-docked .noteArea{height:124px;font-size:14px;padding:10px 12px}
   .sheet.notes-docked .tool{height:32px;padding:0 10px;font-size:12px}
 }
 
@@ -1464,7 +1456,118 @@ body:has(.library-shell){background:var(--bg)}
   .sh-speed{display:none}
   .shelves.with-player{padding-bottom:170px}
   .more-sheet{position:fixed;right:12px;bottom:92px;z-index:20;display:flex;flex-direction:column;min-width:180px;padding:6px;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow)}
-  .more-sheet button{display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border:0;border-radius:11px;background:none;color:var(--text);font-size:14px;font-weight:600;text-align:left}
-  .more-sheet button.on{background:var(--lavender);color:var(--lavender-text)}
+  .more-sheet button,.more-sheet a{display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border:0;border-radius:11px;background:none;color:var(--text);font-size:14px;font-weight:600;text-align:left}
+  .more-sheet button.on,.more-sheet a.on{background:var(--lavender);color:var(--lavender-text)}
 }
 .sh-chips-label{flex:none;align-self:center;margin-right:2px;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase}
+
+
+/* ---------- Diary Sanctuary (Journal, Tasks, Dreams, Plans & WBS, Notes) ---------- */
+.diary-shell{max-width:1180px;display:flex;flex-direction:column;gap:20px;padding-bottom:60px}
+.diary-hero{
+  position:relative;overflow:hidden;border-radius:24px;padding:24px 26px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 13%,var(--surface)),color-mix(in srgb,var(--lavender) 45%,var(--surface)));
+  border:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px;
+}
+.diary-hero-copy{max-width:620px}
+.diary-hero-copy h1{margin:4px 0 6px;font-size:30px;letter-spacing:-.6px}
+.diary-hero-copy p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+.diary-stats{display:flex;flex-wrap:wrap;gap:10px}
+.diary-stat{min-width:94px;padding:10px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.diary-stat b{font-size:20px;line-height:1.1;color:var(--text)}
+.diary-stat span{font-size:11px;font-weight:600;color:var(--muted)}
+.diary-tabs{display:flex;flex-wrap:wrap;gap:8px;padding:6px;border-radius:18px;background:var(--surface);border:1px solid var(--line)}
+.diary-tab{
+  flex:1;min-width:112px;height:44px;padding:0 14px;border:0;border-radius:13px;background:transparent;
+  color:var(--muted);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;
+  cursor:pointer;transition:all .16s ease;
+}
+.diary-tab:hover{color:var(--text);background:var(--surface2)}
+.diary-tab.on.mode-journal{background:#7c4a21;color:#fff;box-shadow:0 8px 20px rgba(124,74,33,.24)}
+.diary-tab.on.mode-tasks{background:#1d4ed8;color:#fff;box-shadow:0 8px 20px rgba(29,78,216,.24)}
+.diary-tab.on.mode-dreams{background:linear-gradient(135deg,#6d28d9,#db2777);color:#fff;box-shadow:0 8px 20px rgba(109,40,217,.26)}
+.diary-tab.on.mode-plans{background:#0f766e;color:#fff;box-shadow:0 8px 20px rgba(15,118,110,.24)}
+.diary-tab.on.mode-notes{background:#b45309;color:#fff;box-shadow:0 8px 20px rgba(180,83,9,.24)}
+.diary-alarm-banner{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 18px;border-radius:18px;background:linear-gradient(135deg,#1d4ed8,#4f46e5);color:#fff;
+  box-shadow:0 14px 34px rgba(29,78,216,.3);animation:rise .25s ease;
+}
+.diary-alarm-actions{display:flex;gap:8px}
+.diary-alarm-actions button{height:34px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.32);background:rgba(255,255,255,.16);color:#fff;font-size:12px;font-weight:700;cursor:pointer}
+.diary-alarm-actions button.primary{background:#fff;color:#1d4ed8;border-color:#fff}
+
+/* Shared cards & inputs inside Diary */
+.diary-grid-2{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.35fr);gap:18px;align-items:start}
+@media(max-width:920px){.diary-grid-2{grid-template-columns:1fr}}
+.diary-card{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:0 10px 28px rgba(15,23,42,.04)}
+.diary-card h2{margin:0 0 4px;font-size:19px}
+.diary-field{width:100%;border:1px solid var(--line2);border-radius:13px;background:var(--bg);color:var(--text);padding:10px 13px;font-size:14px}
+.diary-field:focus{outline:none;border-color:var(--accent)}
+.diary-textarea{width:100%;min-height:132px;border:1px solid var(--line2);border-radius:15px;background:var(--bg);color:var(--text);padding:12px 14px;font-size:14px;line-height:1.6;resize:vertical}
+.diary-textarea:focus{outline:none;border-color:var(--accent)}
+.diary-btn{height:40px;padding:0 16px;border-radius:12px;border:0;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;transition:transform .12s,filter .15s}
+.diary-btn:hover{filter:brightness(1.06)}
+.diary-btn.soft{background:var(--surface2);color:var(--text);border:1px solid var(--line2)}
+.diary-btn.sm{height:32px;padding:0 11px;font-size:12px;border-radius:10px}
+
+/* 1. Journal Mode (Warm Parchment Editorial) */
+.journal-paper{background:linear-gradient(180deg,color-mix(in srgb,#f59e0b 6%,var(--surface)),var(--surface));border-color:color-mix(in srgb,#b45309 22%,var(--line))}
+.journal-paper .diary-textarea{font-family:"Source Serif 4",Georgia,serif;font-size:16px;line-height:1.72}
+.mood-row{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 12px}
+.mood-pill{height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer}
+.mood-pill.on{background:#7c4a21;color:#fff;border-color:#7c4a21}
+.prompt-box{padding:11px 14px;border-radius:14px;background:color-mix(in srgb,#f59e0b 10%,var(--bg));border:1px dashed color-mix(in srgb,#b45309 38%,var(--line));font-size:13px;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.journal-entry{padding:16px 18px;border-radius:18px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.journal-entry-body{margin:0;font-family:"Source Serif 4",Georgia,serif;font-size:15px;line-height:1.68;white-space:pre-wrap}
+
+/* 2. Tasks & Reminders Mode */
+.task-row{display:flex;align-items:flex-start;gap:12px;padding:13px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--line);transition:border-color .15s,opacity .15s}
+.task-row.done{opacity:.64;background:var(--surface2)}
+.task-check{width:22px;height:22px;margin-top:2px;border-radius:7px;border:2px solid var(--accent);background:transparent;color:#fff;display:grid;place-items:center;flex:none;cursor:pointer}
+.task-row.done .task-check{background:var(--good);border-color:var(--good)}
+.prio-badge{padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;text-transform:uppercase}
+.prio-high{background:rgba(239,68,68,.14);color:#dc2626}
+.prio-medium{background:rgba(245,158,11,.16);color:#b45309}
+.prio-low{background:rgba(16,185,129,.14);color:#059669}
+.rem-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;background:var(--hl);color:var(--accent-text);font-size:11px;font-weight:700}
+.rem-pill.overdue{background:rgba(239,68,68,.14);color:#dc2626}
+
+/* 3. Dreams Vision Board & Speak-It-To-Life Studio */
+.dreams-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+.dream-card{position:relative;overflow:hidden;border-radius:22px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;box-shadow:0 12px 30px rgba(109,40,217,.08)}
+.dream-cover{position:relative;height:185px;background:linear-gradient(135deg,#4c1d95,#9d174d);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.dream-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.dream-cat{position:absolute;top:12px;left:12px;padding:4px 10px;border-radius:999px;background:rgba(15,23,42,.68);color:#fff;font-size:11px;font-weight:700;backdrop-filter:blur(6px)}
+.dream-year{position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.88);color:#1e1b4b;font-size:11px;font-weight:800}
+.dream-body{padding:16px;display:flex;flex-direction:column;gap:8px;flex:1}
+.dream-body h3{margin:0;font-size:17px}
+.dream-decl{margin:0;font-size:13px;line-height:1.55;color:var(--muted);font-style:italic}
+.speak-modal-scrim{position:fixed;inset:0;background:rgba(15,10,36,.76);backdrop-filter:blur(8px);z-index:40;display:grid;place-items:center;padding:18px}
+.speak-modal{
+  width:min(560px,100%);border-radius:28px;overflow:hidden;
+  background:radial-gradient(circle at top,#3b0764,#111827 72%);color:#fff;
+  border:1px solid rgba(255,255,255,.18);box-shadow:0 28px 70px rgba(0,0,0,.5);padding:26px;display:flex;flex-direction:column;gap:16px;
+}
+.speak-orb{
+  width:74px;height:74px;border-radius:50%;margin:0 auto;display:grid;place-items:center;
+  background:linear-gradient(135deg,#a855f7,#ec4899);box-shadow:0 0 0 10px rgba(168,85,247,.18);
+  transition:transform .2s,box-shadow .2s;
+}
+.speak-orb.active{animation:pulse 1s ease-in-out infinite;box-shadow:0 0 0 18px rgba(236,72,153,.28)}
+
+/* 4. Plans & WBS (Work Breakdown Structure) */
+.wbs-card{border-radius:20px;background:var(--surface);border:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:12px}
+.wbs-bar{height:8px;border-radius:999px;background:var(--surface2);overflow:hidden}
+.wbs-bar>i{display:block;height:100%;background:linear-gradient(90deg,#0f766e,#10b981);border-radius:999px;transition:width .25s ease}
+.wbs-child{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
+.wbs-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px;background:rgba(15,118,110,.12);color:#0f766e}
+
+/* 5. Creative Sticky Notes Wall */
+.sticky-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.sticky-note{border-radius:18px;padding:16px;border:1px solid rgba(15,23,42,.08);display:flex;flex-direction:column;gap:10px;min-height:168px;box-shadow:0 10px 24px rgba(15,23,42,.05)}
+.sticky-sand{background:#fef9ec;color:#422006}
+.sticky-sky{background:#eff6ff;color:#1e3a8a}
+.sticky-sage{background:#ecfdf5;color:#064e3b}
+.sticky-lavender{background:#f5f3ff;color:#4c1d95}
+.sticky-amber{background:#fff7ed;color:#7c2d12}

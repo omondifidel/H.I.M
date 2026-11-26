@@ -1017,7 +1017,7 @@ function Reader() {
       {panel === "voice" && <button className="scrim" aria-label="Close" onClick={closePanel} />}
 
       {panel === "notes" && (
-        <div className={"sheet notes-docked" + (trayCompact ? " tray-min-mode" : "")} role="dialog" aria-label="Notes">
+        <div className={"sheet notes-docked" + (trayCompact ? " tray-min-mode" : "")} style={{ "--tray-w": `${trayWidth}px` }} role="dialog" aria-label="Notes">
           <div className="grab" style={{ margin: "0 auto" }} />
           <div className="row between">
             <h2 className="sh">Notes</h2>
