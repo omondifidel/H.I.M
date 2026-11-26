@@ -1,23 +1,39 @@
 export const THEMES = [
-  { id: "light", name: "Pure White", bg: "#FFFFFF" },
-  { id: "bluewhite", name: "Sky & Slate", bg: "#F3F8FD" },
-  { id: "greenpurple", name: "Mint & Lavender", bg: "#F3F7F2" },
-  { id: "dark", name: "Midnight Ink", bg: "#17151A" },
-  { id: "sepia", name: "Sepia Page", bg: "#F4ECD8" },
+  { id: "bluewhite", name: "Sky & Slate", description: "Airy coastal blue and crisp white surfaces", bg: "#F3F8FD" },
+  { id: "greenpurple", name: "Mint & Lavender", description: "Soft botanical mint with pastel lavender glow", bg: "#F3F7F2" },
+  { id: "sepia", name: "Warm Parchment", description: "Soft cream and warm paper tones for long reading", bg: "#FAF6F0" },
+  { id: "olive", name: "Olive Grove", description: "Earthy sage and botanical forest greens", bg: "#F3F6F1" },
+  { id: "dark", name: "Midnight", description: "Deep slate navy surfaces easy on the eyes at night", bg: "#0F172A" },
 ];
 
+const LEGACY_MAP = {
+  light: "bluewhite",
+  pure: "bluewhite",
+  sky: "bluewhite",
+  mint: "greenpurple",
+  parchment: "sepia",
+};
+
+export function normalizeTheme(raw) {
+  if (!raw) return "bluewhite";
+  const mapped = LEGACY_MAP[raw] || raw;
+  return THEMES.some((t) => t.id === mapped) ? mapped : "bluewhite";
+}
+
 export function getTheme() {
-  if (typeof window === "undefined") return "light";
-  const saved = localStorage.getItem("theme");
-  return THEMES.some((t) => t.id === saved) ? saved : "light";
+  if (typeof window === "undefined") return "bluewhite";
+  return normalizeTheme(localStorage.getItem("theme"));
 }
 
 export function applyTheme(id) {
   if (typeof document === "undefined") return;
-  const found = THEMES.find((t) => t.id === id) || THEMES[0];
+  const normalized = normalizeTheme(id);
+  const found = THEMES.find((t) => t.id === normalized) || THEMES[0];
   document.documentElement.dataset.theme = found.id;
   document.documentElement.style.colorScheme = found.id === "dark" ? "dark" : "only light";
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", found.bg);
-  try { localStorage.setItem("theme", found.id); } catch {}
+  try {
+    localStorage.setItem("theme", found.id);
+  } catch {}
 }

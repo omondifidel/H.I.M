@@ -1,10 +1,133 @@
-/* ---------- Shared HIM Ministries white, blue-white, mint-lavender & dark themes ---------- */
-:root{--bg:#FFFFFF;--surface:#FFFFFF;--surface2:#F6F7F9;--line:#E5E8EC;--line2:#D1D6DD;--text:#1D232A;--muted:#6C7682;--accent:#2F7A53;--accent-text:#236141;--on-accent:#FFFFFF;--hl:rgba(47,122,83,.11);--hl2:rgba(47,122,83,.32);--good:#2F7A53;--goodbg:#E6F3EC;--danger:#B64E3D;--overlay:rgba(29,35,42,.45);--track:#DFE4EA;--shadow:0 10px 28px rgba(24,32,42,.06);--deco:rgba(29,35,42,.84);--lavender:#F1ECF8;--lavender-text:#654B8A;color-scheme:only light}
-:root[data-theme="light"]{--bg:#FFFFFF;--surface:#FFFFFF;--surface2:#F6F7F9;--text:#1D232A;color-scheme:only light}
-:root[data-theme="bluewhite"]{--bg:#F3F8FD;--surface:#FFFFFF;--surface2:#EAF2FA;--line:#DCE7F2;--line2:#C8D9E9;--text:#1F2D3D;--muted:#71849A;--accent:#4A8BC8;--accent-text:#356FAF;--on-accent:#FFFFFF;--hl:rgba(74,139,200,.13);--hl2:rgba(74,139,200,.4);--good:#3D896D;--goodbg:#E2F2EC;--danger:#B64E57;--overlay:rgba(26,46,68,.45);--track:#D5E2EE;--shadow:0 12px 32px rgba(33,71,109,.09);--deco:rgba(31,45,61,.82);--lavender:#DCEBFA;--lavender-text:#3B6090;color-scheme:only light}
-:root[data-theme="greenpurple"]{--bg:#F3F7F2;--surface:#FCFBFD;--surface2:#E9F0E7;--line:#DBE6DA;--line2:#C5D6C6;--text:#2B342D;--muted:#758078;--accent:#715398;--accent-text:#5D417F;--on-accent:#FFFFFF;--hl:rgba(113,83,152,.13);--hl2:rgba(113,83,152,.4);--good:#4C8B61;--goodbg:#E5F0E6;--danger:#A64F50;--overlay:rgba(30,40,33,.46);--track:#D4E0D3;--shadow:0 12px 32px rgba(43,58,46,.09);--deco:rgba(43,52,45,.82);--lavender:#EAE1F3;--lavender-text:#684C8A;color-scheme:only light}
-:root[data-theme="dark"]{--bg:#17151A;--surface:#211F26;--surface2:#2B2832;--line:#38343E;--line2:#49434F;--text:#F5F0E8;--muted:#B1A8B0;--accent:#8CC59B;--accent-text:#A7D6B2;--on-accent:#17151A;--hl:rgba(140,197,155,.15);--hl2:rgba(140,197,155,.42);--good:#7FCEA0;--goodbg:#25362D;--danger:#F09A88;--overlay:rgba(10,9,12,.72);--track:#4A444F;--shadow:0 12px 32px rgba(0,0,0,.32);--deco:rgba(23,21,26,.86);--lavender:#393244;--lavender-text:#D0BDEB;color-scheme:dark}
-:root[data-theme="sepia"]{--bg:#F4ECD8;--surface:#FBF5E6;--surface2:#EFE4CC;--line:#E2D5B8;--line2:#D6C6A4;--text:#3B2F20;--muted:#6E5E45;--accent:#B5651D;--accent-text:#8A4B12;--on-accent:#FFF8EC;--hl:rgba(181,101,29,.14);--hl2:rgba(181,101,29,.38);--good:#2F7A4F;--goodbg:#E2EDD5;--danger:#B3401A;--overlay:rgba(59,47,32,.4);--track:#D6C6A4;--shadow:0 12px 32px rgba(59,47,32,.12);--deco:rgba(59,47,32,.82);--lavender:#EADFC8;--lavender-text:#7A5A2E;--journey-green:#E6EBD5;--journey-purple:#EFE2D2;color-scheme:only light}
+:root, [data-theme="bluewhite"] {
+  color-scheme: only light;
+  --bg: #F3F8FD;
+  --surface: #FFFFFF;
+  --surface2: #EAF2FA;
+  --line: #DCE7F2;
+  --line2: #C8D9E9;
+  --text: #1F2D3D;
+  --muted: #71849A;
+  --accent: #4A8BC8;
+  --accent-text: #356FAF;
+  --on-accent: #FFFFFF;
+  --hl: rgba(74, 139, 200, 0.13);
+  --hl2: rgba(74, 139, 200, 0.40);
+  --good: #3D896D;
+  --goodbg: #E2F2EC;
+  --danger: #B64E57;
+  --overlay: rgba(26, 46, 68, 0.45);
+  --track: #D5E2EE;
+  --shadow: 0 12px 32px rgba(33, 71, 109, 0.09);
+  --deco: rgba(31, 45, 61, 0.82);
+  --lavender: #DCEBFA;
+  --lavender-text: #3B6090;
+  --journey-green: #E6F3EF;
+  --journey-purple: #F0EBF6;
+}
+[data-theme="greenpurple"] {
+  color-scheme: only light;
+  --bg: #F3F7F2;
+  --surface: #FCFBFD;
+  --surface2: #E9F0E7;
+  --line: #DBE6DA;
+  --line2: #C5D6C6;
+  --text: #2B342D;
+  --muted: #758078;
+  --accent: #715398;
+  --accent-text: #5D417F;
+  --on-accent: #FFFFFF;
+  --hl: rgba(113, 83, 152, 0.13);
+  --hl2: rgba(113, 83, 152, 0.40);
+  --good: #4C8B61;
+  --goodbg: #E5F0E6;
+  --danger: #A64F50;
+  --overlay: rgba(30, 40, 33, 0.46);
+  --track: #D4E0D3;
+  --shadow: 0 12px 32px rgba(43, 58, 46, 0.09);
+  --deco: rgba(43, 52, 45, 0.82);
+  --lavender: #EAE1F3;
+  --lavender-text: #684C8A;
+  --journey-green: #E3F0E5;
+  --journey-purple: #EEE6F5;
+}
+[data-theme="sepia"] {
+  color-scheme: only light;
+  --bg: #FAF6F0;
+  --surface: #FFFDF9;
+  --surface2: #F3ECE1;
+  --line: #E6DEC8;
+  --line2: #D6C8AC;
+  --text: #292524;
+  --muted: #78716C;
+  --accent: #B45309;
+  --accent-text: #92400E;
+  --on-accent: #FFFBEB;
+  --hl: rgba(180, 83, 9, 0.13);
+  --hl2: rgba(180, 83, 9, 0.36);
+  --good: #2F7A4F;
+  --goodbg: #E2EDD5;
+  --danger: #B91C1C;
+  --overlay: rgba(41, 37, 36, 0.44);
+  --track: #D6C8AC;
+  --shadow: 0 12px 32px rgba(41, 37, 36, 0.10);
+  --deco: rgba(41, 37, 36, 0.84);
+  --lavender: #EFE3CE;
+  --lavender-text: #7C4A19;
+  --journey-green: #E7ECDC;
+  --journey-purple: #F2E7D5;
+}
+[data-theme="olive"] {
+  color-scheme: only light;
+  --bg: #F3F6F1;
+  --surface: #FAFDF8;
+  --surface2: #E7EFE3;
+  --line: #D7E2D0;
+  --line2: #C0D1B7;
+  --text: #1E2923;
+  --muted: #5A6B60;
+  --accent: #2F6F4E;
+  --accent-text: #23553B;
+  --on-accent: #FFFFFF;
+  --hl: rgba(47, 111, 78, 0.13);
+  --hl2: rgba(47, 111, 78, 0.36);
+  --good: #2F6F4E;
+  --goodbg: #DCECE2;
+  --danger: #B64E3D;
+  --overlay: rgba(30, 41, 35, 0.45);
+  --track: #C4D4BC;
+  --shadow: 0 12px 32px rgba(30, 41, 35, 0.09);
+  --deco: rgba(30, 41, 35, 0.84);
+  --lavender: #E2ECE4;
+  --lavender-text: #2B5940;
+  --journey-green: #E1EFE6;
+  --journey-purple: #EAF1E6;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0F172A;
+  --surface: #1E293B;
+  --surface2: #273549;
+  --line: #334155;
+  --line2: #475569;
+  --text: #F8FAFC;
+  --muted: #94A3B8;
+  --accent: #38BDF8;
+  --accent-text: #7DD3FC;
+  --on-accent: #0F172A;
+  --hl: rgba(56, 189, 248, 0.16);
+  --hl2: rgba(56, 189, 248, 0.40);
+  --good: #34D399;
+  --goodbg: rgba(16, 185, 129, 0.18);
+  --danger: #F87171;
+  --overlay: rgba(2, 6, 23, 0.72);
+  --track: #334155;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
+  --deco: rgba(15, 23, 42, 0.88);
+  --lavender: #273549;
+  --lavender-text: #93C5FD;
+  --journey-green: #1B3336;
+  --journey-purple: #252E4A;
+}
 
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}

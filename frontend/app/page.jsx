@@ -347,8 +347,30 @@ function AuthForm({ onDone }) {
           </div>
         ) : (
           <div className="art" aria-hidden="true">
-            <div className="pc a" />
-            <div className="pc b" />
+            <div className="pc a book-thumb">
+              <span className="bk-spine" />
+              <div className="bk-inner">
+                <span className="bk-tag">STUDY</span>
+                <div className="bk-crest">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 6v12M8 10h8"/><rect x="4" y="3" width="16" height="18" rx="3"/></svg>
+                </div>
+                <div className="bk-title">Faith &amp; Grace</div>
+                <div className="bk-lines"><i /><i style={{ width: "68%" }} /></div>
+                <span className="bk-foot">142 pages</span>
+              </div>
+            </div>
+            <div className="pc b book-thumb">
+              <span className="bk-spine" />
+              <div className="bk-inner">
+                <span className="bk-tag">DEVOTIONAL</span>
+                <div className="bk-crest">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </div>
+                <div className="bk-title">Walking in Light</div>
+                <div className="bk-lines"><i /><i style={{ width: "74%" }} /></div>
+                <span className="bk-foot">98 pages</span>
+              </div>
+            </div>
             <div className="pc f">
               <div className="ln t" />
               <div className="ln" style={{ width: "90%" }} />
