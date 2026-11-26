@@ -13,13 +13,23 @@ export const metadata = {
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
-export const viewport = { width: "device-width", initialScale: 1, themeColor: "#FFFFFF", colorScheme: "light" };
+export const viewport = { width: "device-width", initialScale: 1, themeColor: "#F3F8FD", colorScheme: "light" };
 
-const themeScript = `try{var t=localStorage.getItem("theme")||"light";var bg={light:"#FFFFFF",bluewhite:"#F3F8FD",greenpurple:"#F3F7F2",dark:"#17151A",sepia:"#F4ECD8"}[t]||"#FFFFFF";document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=(t==="dark"?"dark":"only light");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",bg)}catch(e){}`;
+const themeScript = `try{
+  var raw=localStorage.getItem("theme");
+  var map={light:"bluewhite",pure:"bluewhite",sky:"bluewhite",mint:"greenpurple",parchment:"sepia"};
+  var t=map[raw]||raw;
+  var bg={bluewhite:"#F3F8FD",greenpurple:"#F3F7F2",sepia:"#FAF6F0",olive:"#F3F6F1",dark:"#0F172A"};
+  if(!bg[t])t="bluewhite";
+  document.documentElement.setAttribute("data-theme",t);
+  document.documentElement.style.colorScheme=(t==="dark"?"dark":"only light");
+  var m=document.querySelector('meta[name="theme-color"]');
+  if(m)m.setAttribute("content",bg[t]);
+}catch(e){}`;
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" data-theme="light" style={{ colorScheme: "only light" }} suppressHydrationWarning>
+    <html lang="en" data-theme="bluewhite" style={{ colorScheme: "only light" }} suppressHydrationWarning>
       <head>
         <meta name="color-scheme" content="light" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />

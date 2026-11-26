@@ -72,7 +72,9 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="notif-pop" role="dialog" aria-label="Notification center">
+        <>
+          <div className="notif-backdrop" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div className="notif-pop" role="dialog" aria-label="Notification center">
           <div className="notif-head">
             <b>Notifications</b>
             {unread > 0 && <button type="button" className="notif-clear" onClick={markAll}>Mark all read</button>}
@@ -99,6 +101,7 @@ export default function NotificationBell() {
             })}
           </div>
         </div>
+        </>
       )}
     </div>
   );
