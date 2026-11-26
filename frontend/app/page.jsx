@@ -7,7 +7,7 @@ import { clearLocalNotes, removeNote, syncNotes } from "../lib/notes";
 import { applyTheme, getTheme, THEMES } from "../lib/theme";
 import NotificationBell from "../components/NotificationBell";
 import DeepSearch from "../components/DeepSearch";
-import Shelves from "../components/Shelves";
+import Shelves, { SHELF_KIND } from "../components/Shelves";
 import { extractParagraphs, loadPdfjs } from "../lib/pdfText";
 
 const Icon = ({ d, size = 24, fill }) => (
@@ -573,6 +573,9 @@ function Library({ onLogout, user }) {
       form.append("section", section);
       await api("/api/documents", { method: "POST", form });
       await load();
+      setMsg("Added. Sorting it into a stage…");
+      // the server reads and sorts it in the background; look again once it has had time
+      for (const wait of [8000, 25000]) setTimeout(() => load().then(() => setMsg("")), wait);
     } catch (err) {
       setMsg(err.message);
     }
@@ -602,6 +605,16 @@ function Library({ onLogout, user }) {
       await load();
     } catch (err) {
       setMsg(err.message);
+    }
+  }
+
+  async function retype(id, kind) {
+    setDocs((items) => items.map((d) => (d.id === id ? { ...d, kind } : d)));
+    try {
+      await api(`/api/documents/${id}`, { method: "PATCH", body: { kind } });
+    } catch (err) {
+      setMsg(err.message);
+      load();
     }
   }
 
@@ -770,7 +783,9 @@ function Library({ onLogout, user }) {
   const focusProgress = ((focusDuration * 60 - focusSeconds) / (focusDuration * 60)) * 100;
   const focusTime = `${String(Math.floor(focusSeconds / 60)).padStart(2, "0")}:${String(focusSeconds % 60).padStart(2, "0")}`;
   const shelfTabs = [["pdfs", "PDFs", NAV.pdfs, docs.filter((d) => d.kind === "pdf").length],
-    ["books", "Books", NAV.books, docs.filter((d) => d.kind === "book").length], ["sermons", "Sermons", NAV.sermons, sermons.length]];
+    ["books", "Books", NAV.books, docs.filter((d) => d.kind === "book").length],
+    ["sermons", "Sermons", NAV.sermons, sermons.length + docs.filter((d) => d.kind === "sermon").length],
+    ["studynotes", "Study notes", NAV.notes, docs.filter((d) => d.kind === "notes").length]];
   const toolTabs = [["search", "Search", NAV.search], ["notes", "Notes", NAV.notes], ["offline", "Offline", NAV.offline], ["settings", "Settings", NAV.settings]];
   const go = (k) => { setTab(k); setMore(false); if (k === "notes") loadNotes(); };
   const sideTab = ([k, label, d, n]) => (
@@ -1146,9 +1161,9 @@ function Library({ onLogout, user }) {
         </>
       ) : null}
 
-      {(tab === "pdfs" || tab === "books" || tab === "sermons") && (
-        <Shelves kind={tab === "sermons" ? "sermon" : tab.slice(0, -1)} docs={docs} sermons={sermons} sections={sections}
-          streak={streak} setTab={go} onUpload={upload} onSection={sortInto} onSermonPosition={sermonPosition} busy={busy} />
+      {SHELF_KIND[tab] && (
+        <Shelves kind={SHELF_KIND[tab]} docs={docs} sermons={sermons} sections={sections}
+          streak={streak} setTab={go} onUpload={upload} onSection={sortInto} onKind={retype} onSermonPosition={sermonPosition} busy={busy} />
       )}
 
       {tab === "search" && <DeepSearch />}

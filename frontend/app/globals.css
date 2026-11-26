@@ -1415,6 +1415,7 @@ body:has(.library-shell){background:var(--bg)}
 .sh-btn.go{border:1px solid var(--good);background:var(--goodbg);color:var(--good)}
 .sh-btn.ghost{border:1px solid var(--line2);background:var(--surface);color:var(--text)}
 .sh-sort{height:30px;margin-top:4px;padding:0 6px;border:1px solid var(--line2);border-radius:9px;background:var(--surface2);font-size:11px;max-width:100%}
+.sh-picks{display:flex;flex-wrap:wrap;gap:6px}
 .sh-shelf{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;scroll-snap-type:x mandatory}
 .sh-shelf.wrap{flex-wrap:wrap;overflow:visible}
 .sh-book{display:flex;flex-direction:column;gap:6px;width:150px;flex:none;scroll-snap-align:start}

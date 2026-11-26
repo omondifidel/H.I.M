@@ -18,6 +18,7 @@ SECTIONS = [
     ("Restoration", "Restoration"), ("Relationships", "Relationships"),
 ]
 SECTION_NAMES = {name for name, _ in SECTIONS}
+DOC_TYPES = ("pdf", "book", "sermon", "notes")
 BOOK_PAGES = 40  # longer than this is a full book; up to this is a short teaching ("PDF")
 
 
@@ -33,6 +34,7 @@ class Document(Base):
     section: Mapped[str] = mapped_column(String(80), default="")  # one of SECTIONS, "" = not sorted yet
     pages: Mapped[int] = mapped_column(Integer, default=0)  # filled in when the PDF is read for search
     author: Mapped[str] = mapped_column(String(200), default="")
+    doc_type: Mapped[str] = mapped_column(String(10), default="")  # "sermon" | "notes" | "book" | "pdf"; "" = by page count
 
 
 class Note(Base):

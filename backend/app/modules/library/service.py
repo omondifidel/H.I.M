@@ -13,7 +13,7 @@ from app.core.storage import get_storage
 from app.core.utils import as_utc, utcnow
 from app.modules.auth.groups import group_ids_for
 from app.modules.auth.models import User
-from app.modules.library.models import BOOK_PAGES, SECTION_NAMES, Document, DocumentProgress, DocumentShare, Note
+from app.modules.library.models import BOOK_PAGES, DOC_TYPES, SECTION_NAMES, Document, DocumentProgress, DocumentShare, Note
 from app.modules.library.schemas import DocumentOut, DocumentPatch, NoteIn, ProgressIn
 from app.modules.search import index as search_index
 from app.modules.usage import service as usage
@@ -52,10 +52,14 @@ def get_owned_document(db: Session, user: User, doc_id: str) -> Document:
     return doc
 
 
+def kind_of(doc: Document) -> str:
+    return doc.doc_type or ("book" if (doc.pages or 0) > BOOK_PAGES else "pdf")
+
+
 def _out(doc: Document, page: int, paragraph: int, shared: bool) -> DocumentOut:
     return DocumentOut(id=doc.id, title=doc.title, size=doc.size, created_at=doc.created_at, last_page=page,
                        last_paragraph=paragraph, shared=shared, section=doc.section or "", pages=doc.pages or 0,
-                       author=doc.author or "", kind="book" if (doc.pages or 0) > BOOK_PAGES else "pdf")
+                       author=doc.author or "", kind=kind_of(doc))
 
 
 def to_out(db: Session, user: User, doc: Document) -> DocumentOut:
@@ -88,10 +92,14 @@ def check_section(section: str) -> str:
 
 
 def patch_document(db: Session, user: User, doc_id: str, p: DocumentPatch) -> DocumentOut:
-    """The owner sorts a PDF into a section or corrects its author."""
+    """The owner sorts a PDF into a section, corrects its type (book, sermon, notes...) or its author."""
     doc = get_owned_document(db, user, doc_id)
     if p.section is not None:
         doc.section = check_section(p.section)
+    if p.kind is not None:
+        if p.kind not in DOC_TYPES:
+            raise Invalid("Unknown type")
+        doc.doc_type = p.kind
     if p.author is not None:
         doc.author = p.author.strip()[:200]
     db.commit()

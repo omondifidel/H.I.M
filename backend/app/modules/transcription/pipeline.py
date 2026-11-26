@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.utils import utcnow
+from app.modules.library import sorter
 from app.modules.search import index as search_index
 from app.modules.transcription import merge
 from app.modules.transcription.engine import EngineError, NotConfigured, RateLimited, get_engine
@@ -128,6 +129,11 @@ def _process(db: Session, job: Transcription, sleep: Callable[[float], None]) ->
     segments = merge.merge_chunks(pieces)
     job.segments, job.text, job.engine = segments, merge.full_text(segments), engine.name
     job.status, job.progress, job.note, job.finished_at = "done", 100, "", utcnow()
+    if not job.section:  # the speaker may have picked it already when uploading
+        try:
+            job.section = sorter.classify(job.title, [job.text or ""], kind="sermon").section
+        except Exception:  # sorting is a nicety; the transcript still finishes
+            log.exception("could not sort sermon %s", job.id)
     db.execute(delete(TranscriptionChunk).where(TranscriptionChunk.transcription_id == job.id))  # raw pieces no longer needed
     db.commit()
     search_index.index_sermon(db, job)
