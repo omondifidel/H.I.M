@@ -10,7 +10,7 @@ from app.core.database import SessionLocal
 from app.core.utils import utcnow
 from app.modules.transcription import pipeline
 from app.modules.transcription.models import Transcription
-from app.modules.transcription.service import remove_files
+from app.modules.transcription.service import has_audio, remove_files
 
 log = logging.getLogger("transcription")
 
@@ -42,7 +42,8 @@ class Worker:
                                                          Transcription.status.in_(("done", "failed", "cancelled")))).all()
             for job in old:
                 remove_files(job.id)
-                job.has_audio = False
+                job.has_audio = has_audio(job)  # still playable from the kept listening copy
+                # ponytail: jobs with a kept copy are re-checked every cleanup pass (one storage HEAD each); add a flag column if that grows
             stale = db.scalars(select(Transcription).where(Transcription.status == "uploading", Transcription.created_at < utcnow() - dt.timedelta(hours=24))).all()
             for job in stale:
                 remove_files(job.id)

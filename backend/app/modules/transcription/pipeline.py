@@ -16,7 +16,8 @@ from app.modules.transcription import merge
 from app.modules.transcription.engine import EngineError, NotConfigured, RateLimited, get_engine
 from app.modules.transcription.media import MediaError, make_chunk, probe_duration
 from app.modules.transcription.models import Transcription, TranscriptionChunk
-from app.modules.transcription.service import job_dir, original_path
+from app.core.storage import get_storage
+from app.modules.transcription.service import job_dir, listen_key, original_path
 
 log = logging.getLogger("transcription")
 
@@ -126,6 +127,14 @@ def _process(db: Session, job: Transcription, sleep: Callable[[float], None]) ->
 
     pieces = [{**plan, "segments": rows[plan["idx"]].segments} for plan in plans]
     segments = merge.merge_chunks(pieces)
+    # The original is deleted after AUDIO_RETENTION_HOURS (and a free host's disk is wiped on restart),
+    # so keep a small speech copy in permanent storage for the editor and Sermons players.
+    try:
+        listen = chunk_dir / "listen.ogg"
+        make_chunk(source, listen, 0, job.duration)
+        get_storage().put_file(listen_key(job.id), listen)
+    except Exception:
+        log.exception("Could not keep a listening copy of %s", job.id)
     job.segments, job.text, job.engine = segments, merge.full_text(segments), engine.name
     job.status, job.progress, job.note, job.finished_at = "done", 100, "", utcnow()
     db.execute(delete(TranscriptionChunk).where(TranscriptionChunk.transcription_id == job.id))  # raw pieces no longer needed

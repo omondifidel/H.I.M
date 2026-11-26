@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -87,7 +87,7 @@ def delete(job_id: str, user: User = Depends(stt_user), db: Session = Depends(ge
 
 @router.get("/{job_id}/audio")
 def audio(job_id: str, user: User = Depends(stt_user), db: Session = Depends(get_db)):
-    return FileResponse(service.audio_file(db, user, job_id))
+    return service.audio_response(db, user, job_id)
 
 
 # Listening (no Transcribe access needed): sermons found in search open read-only for everyone signed in.
@@ -98,7 +98,7 @@ def listen(job_id: str, user: User = Depends(current_user), db: Session = Depend
 
 @router.get("/{job_id}/listen/audio")
 def listen_audio(job_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return FileResponse(service.sermon_audio(db, job_id))
+    return service.sermon_audio(db, job_id)
 
 
 @router.get("/{job_id}/export")

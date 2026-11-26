@@ -6,7 +6,10 @@ from typing import Optional
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from fastapi.responses import FileResponse, Response
+
 from app.core.config import settings
+from app.core.storage import get_storage
 from app.core.errors import BadRequest, Conflict, Invalid, NotFound, TooLarge
 from app.core.utils import utcnow
 from app.modules.auth.models import User
@@ -39,6 +42,11 @@ def original_path(job: Transcription) -> Optional[Path]:
         for candidate in folder.glob("original.*"):
             return candidate
     return None
+
+
+def listen_key(job_id: str) -> str:
+    """Small Opus copy kept after the original is cleaned up, so the editor can still play it."""
+    return f"audio/{job_id}.ogg"
 
 
 def remove_files(job_id: str) -> None:
@@ -181,6 +189,7 @@ def delete_job(db: Session, user: User, job_id: str) -> None:
     db.commit()
     search_index.remove_source(db, job_id)
     remove_files(job_id)
+    get_storage().delete(listen_key(job_id))
 
 
 def cancel(db: Session, user: User, job_id: str) -> Transcription:
@@ -213,7 +222,7 @@ def _finished(db: Session, job_id: str) -> Transcription:
 def sermon(db: Session, user: User, job_id: str) -> SermonOut:
     job = _finished(db, job_id)
     return SermonOut(id=job.id, title=job.title, duration=job.duration, paragraphs=_paragraphs(job.segments or []),
-                     mine=job.user_id == user.id, has_audio=original_path(job) is not None)
+                     mine=job.user_id == user.id, has_audio=has_audio(job))
 
 
 def sermon_cards(db: Session, user: User) -> list[SermonCard]:
@@ -238,19 +247,25 @@ def save_position(db: Session, user: User, job_id: str, p: PositionIn) -> None:
     db.commit()
 
 
-def sermon_audio(db: Session, job_id: str) -> Path:
-    path = original_path(_finished(db, job_id))
-    if path is None:
-        raise NotFound("The recording is no longer stored on the server")
-    return path
-
-
-def audio_file(db: Session, user: User, job_id: str) -> Path:
-    job = get_owned(db, user, job_id)
+def _audio(job: Transcription) -> Response:
     path = original_path(job)
-    if path is None:
-        raise NotFound("The recording is no longer stored on the server")
-    return path
+    if path is not None:
+        return FileResponse(path)
+    if get_storage().exists(listen_key(job.id)):
+        return get_storage().response(listen_key(job.id), "audio/ogg")
+    raise NotFound("The recording is no longer stored on the server")
+
+
+def has_audio(job: Transcription) -> bool:
+    return original_path(job) is not None or get_storage().exists(listen_key(job.id))
+
+
+def sermon_audio(db: Session, job_id: str) -> Response:
+    return _audio(_finished(db, job_id))
+
+
+def audio_response(db: Session, user: User, job_id: str) -> Response:
+    return _audio(get_owned(db, user, job_id))
 
 
 # ---------- export ----------
