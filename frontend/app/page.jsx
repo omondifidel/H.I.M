@@ -6,6 +6,7 @@ import { idbAll, idbDel, idbDelPrefix, idbGet, idbKeys, idbPut } from "../lib/db
 import { clearLocalNotes, removeNote, syncNotes } from "../lib/notes";
 import { applyTheme, getTheme, THEMES } from "../lib/theme";
 import NotificationBell from "../components/NotificationBell";
+import DiaryWorkspace from "../components/DiaryWorkspace";
 import DeepSearch from "../components/DeepSearch";
 import Shelves from "../components/Shelves";
 import { extractParagraphs, loadPdfjs } from "../lib/pdfText";
@@ -48,6 +49,7 @@ const NAV = {
   search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
   notes: <><path d="M6 3.5h8l4 4v13H6z" /><path d="M14 3.5v4h4M9 12h6M9 16h6" /></>,
   offline: <><path d="M12 3.5v10M8.5 10l3.5 3.5 3.5-3.5M5 16v3h14v-3" /></>,
+  diary: <><path d="M6 4h11a2 2 0 012 2v12a2 2 0 01-2 2H6a1 1 0 01-1-1V5a1 1 0 011-1z" /><path d="M9 4v16M12 9h4M12 13h4" /></>,
   settings: <><path d="M4 7h5m4 0h7M4 17h2m4 0h10M9 4v6m-2 4v6" /></>,
 };
 const JOURNEY_ICONS = {
@@ -771,7 +773,7 @@ function Library({ onLogout, user }) {
   const focusTime = `${String(Math.floor(focusSeconds / 60)).padStart(2, "0")}:${String(focusSeconds % 60).padStart(2, "0")}`;
   const shelfTabs = [["pdfs", "PDFs", NAV.pdfs, docs.filter((d) => d.kind === "pdf").length],
     ["books", "Books", NAV.books, docs.filter((d) => d.kind === "book").length], ["sermons", "Sermons", NAV.sermons, sermons.length]];
-  const toolTabs = [["search", "Search", NAV.search], ["notes", "Notes", NAV.notes], ["offline", "Offline", NAV.offline], ["settings", "Settings", NAV.settings]];
+  const toolTabs = [["search", "Search", NAV.search], ["notes", "Notes", NAV.notes], ["diary", "Diary", NAV.diary], ["offline", "Offline", NAV.offline], ["settings", "Settings", NAV.settings]];
   const go = (k) => { setTab(k); setMore(false); if (k === "notes") loadNotes(); };
   const sideTab = ([k, label, d, n]) => (
     <button key={k} className={"side-tab" + (tab === k ? " on" : "")} aria-current={tab === k ? "page" : undefined} onClick={() => go(k)}>
@@ -1217,6 +1219,8 @@ function Library({ onLogout, user }) {
           )}
         </div>
       )}
+
+      {tab === "diary" && <DiaryWorkspace userEmail={user?.email} />}
 
       {tab === "settings" && (
         <div className="settings-page">
