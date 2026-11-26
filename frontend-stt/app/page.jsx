@@ -4,6 +4,7 @@ import { api, getToken, setUser } from "../lib/api";
 import { cleanName, clock, fmtDate, fmtSize } from "../lib/format";
 import { deleteAudio, saveAudio } from "../lib/db";
 import { uploadRecording } from "../lib/upload";
+import { prepareAudioFile, shouldCompress } from "../lib/audioPrep";
 import { THEMES, applyTheme, getTheme } from "../lib/theme";
 
 const ACTIVE = ["uploading", "queued", "processing"];
@@ -44,7 +45,7 @@ function NewForm({ engine, onStarted, disabled }) {
         onDragLeave={() => setOver(false)}
         onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files && e.dataTransfer.files[0]); }}
       >
-        {file ? (<><b>{file.name}</b><span className="muted">{fmtSize(file.size)} · tap to choose a different file</span></>) : (<><b>Choose a sermon recording</b><span className="muted">or drop it here · MP3, M4A, WAV, MP4 and more · up to {engine ? engine.max_audio_mb : 600} MB</span></>)}
+        {file ? (<><b>{file.name}</b><span className="muted">{fmtSize(file.size)} · tap to choose a different file</span></>) : (<><b>Choose a sermon recording</b><span className="muted">or drop it here · MP3, M4A, WAV, MP4 and more · up to {engine ? (engine.max_audio_mb >= 1024 ? `${(engine.max_audio_mb / 1024).toFixed(0)} GB` : `${engine.max_audio_mb} MB`) : "4 GB"}</span></>)}
       </div>
 
       <label className="field">Title<input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sunday service, 9 Nov" /></label>
@@ -117,7 +118,7 @@ export default function Home() {
   const [engine, setEngine] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [msg, setMsg] = useState("");
-  const [up, setUp] = useState(null); // { id, name, pct }
+  const [up, setUp] = useState(null); // { id, name, pct, stage }
   const [q, setQ] = useState("");
   const [theme, setTheme] = useState("light");
   useEffect(() => { const t = getTheme(); setTheme(t); applyTheme(t); }, []);
@@ -165,14 +166,24 @@ export default function Home() {
     await load();
   }
 
-  async function start(file, body) {
+  async function start(rawFile, body) {
     setMsg("");
     try {
-      const created = await api("/api/transcriptions", { method: "POST", body });
+      let file = rawFile;
+      if (shouldCompress(rawFile)) {
+        setUp({ id: "prep", name: rawFile.name, pct: 15, stage: "Optimizing audio in browser before upload…" });
+        file = await prepareAudioFile(rawFile, (stage) =>
+          setUp({ id: "prep", name: rawFile.name, pct: 55, stage })
+        );
+        setUp(null);
+      }
+      const uploadBody = { ...body, filename: file.name, size: file.size };
+      const created = await api("/api/transcriptions", { method: "POST", body: uploadBody });
       saveAudio(created.id, file).catch(() => {}); // keep a copy on this device for the editor
       await load();
       await send(file, created.id);
     } catch (err) {
+      setUp(null);
       setMsg(err.message);
     }
   }
@@ -254,9 +265,9 @@ export default function Home() {
 
           {up && (
             <div className="card job" style={{ marginBottom: 12 }}>
-              <b>Uploading {up.name}</b>
+              <b>{up.stage ? up.stage : `Uploading ${up.name}`}</b>
               <div className="bar" role="progressbar" aria-valuenow={up.pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: up.pct + "%" }} /></div>
-              <div className="muted sm">{up.pct}% · keep this page open until it reaches 100%</div>
+              <div className="muted sm">{up.stage ? "Shrinking file size before sending…" : `${up.pct}% · keep this page open until it reaches 100%`}</div>
             </div>
           )}
 

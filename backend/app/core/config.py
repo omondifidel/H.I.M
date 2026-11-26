@@ -41,7 +41,7 @@ class Settings:
     groq_chat_model: str = "openai/gpt-oss-120b"  # voice Q&A
     openai_api_key: str = ""
     openai_model: str = "whisper-1"
-    max_audio_bytes: int = 600 * 1024 * 1024
+    max_audio_bytes: int = 4096 * 1024 * 1024
     chunk_seconds: int = 600                 # each piece sent for transcription
     chunk_overlap: int = 2                   # extra seconds on each side so words are not cut
     audio_retention_hours: int = 48          # how long the original recording stays on the server
@@ -72,7 +72,7 @@ def load_settings() -> Settings:
         groq_chat_model=os.environ.get("GROQ_CHAT_MODEL", "openai/gpt-oss-120b").strip(),
         openai_api_key=os.environ.get("OPENAI_API_KEY", "").strip(),
         openai_model=os.environ.get("OPENAI_MODEL", "whisper-1").strip(),
-        max_audio_bytes=int(os.environ.get("MAX_AUDIO_MB", "600")) * 1024 * 1024,
+        max_audio_bytes=int(os.environ.get("MAX_AUDIO_MB", "4096")) * 1024 * 1024,
         chunk_seconds=int(os.environ.get("CHUNK_SECONDS", "600")),
         chunk_overlap=int(os.environ.get("CHUNK_OVERLAP_SECONDS", "2")),
         audio_retention_hours=int(os.environ.get("AUDIO_RETENTION_HOURS", "48")),
