@@ -9,7 +9,7 @@ from app.core.storage import get_storage
 from app.modules.auth.deps import current_user, require_app
 from app.modules.auth.models import User
 from app.modules.library import service
-from app.modules.library.models import SECTIONS
+from app.modules.library.models import GROUPS, SECTIONS
 from app.modules.library.schemas import DocumentOut, DocumentPatch, NoteIn, NoteOut, ProgressIn
 
 router = APIRouter(prefix="/api", tags=["library"])
@@ -20,6 +20,12 @@ library_user = require_app("library")
 def sections(user: User = Depends(current_user)):
     """The discipleship sections, in programme order (the library and Transcribe both use them)."""
     return [{"name": name, "short": short} for name, short in SECTIONS]
+
+
+@router.get("/groups")
+def groups(user: User = Depends(current_user)):
+    """The second label (Intercession / Family, Warfare / Men, ...); a book can be in several."""
+    return GROUPS
 
 
 @router.get("/documents", response_model=list[DocumentOut])

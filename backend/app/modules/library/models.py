@@ -2,7 +2,7 @@ import datetime as dt
 import uuid
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -18,6 +18,10 @@ SECTIONS = [
     ("Restoration", "Restoration"), ("Relationships", "Relationships"),
 ]
 SECTION_NAMES = {name for name, _ in SECTIONS}
+# The second label: who or what a book is for (the HIM Drive folders). A book can be in several.
+GROUPS = ["Intercession / Family", "Intercession / Kings and Authority", "Intercession / Welfare of others",
+          "Warfare / Men", "Warfare / The Afflicted", "Warfare / The Sons of Praise", "Warfare / Wives and Children"]
+DOC_TYPES = ("pdf", "book", "sermon", "notes")
 BOOK_PAGES = 40  # longer than this is a full book; up to this is a short teaching ("PDF")
 
 
@@ -33,6 +37,8 @@ class Document(Base):
     section: Mapped[str] = mapped_column(String(80), default="")  # one of SECTIONS, "" = not sorted yet
     pages: Mapped[int] = mapped_column(Integer, default=0)  # filled in when the PDF is read for search
     author: Mapped[str] = mapped_column(String(200), default="")
+    groups: Mapped[list] = mapped_column(JSON, default=list)  # some of GROUPS
+    doc_type: Mapped[str] = mapped_column(String(10), default="")  # "sermon" | "notes" | "book" | "pdf"; "" = by page count
 
 
 class Note(Base):
