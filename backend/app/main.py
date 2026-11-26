@@ -15,6 +15,7 @@ from app.core.migrations import run_migrations
 from app.modules.admin.router import router as admin_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.assistant.router import router as assistant_router
+from app.modules.assistant.study import router as study_router
 from app.modules.search import index as search_index
 from app.modules.search.router import router as search_router
 from app.modules.auth import service as auth_service
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(notifications_router)
     app.include_router(assistant_router)
+    app.include_router(study_router)
     app.include_router(search_router)
 
     @app.get("/api/health")
