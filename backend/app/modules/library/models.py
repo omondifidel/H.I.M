@@ -8,6 +8,18 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 from app.core.utils import utcnow
 
+# The discipleship sections every PDF, book and sermon is grouped by (the HIM Library design), in programme order.
+# (name, short label for the filter chips)
+SECTIONS = [
+    ("Intimacy / Presence of God", "Intimacy"), ("Prayer and Intercession", "Prayer"), ("Faith", "Faith"),
+    ("Submission and Fatherhood / Prosperity", "Submission"), ("The Supernatural Life", "Supernatural"),
+    ("Light and Illumination", "Light"), ("Royalty", "Royalty"), ("Excellence", "Excellence"),
+    ("Yadon / Stature", "Yadon / Stature"), ("The Prophetic", "Prophetic"), ("Anointing", "Anointing"),
+    ("Restoration", "Restoration"), ("Relationships", "Relationships"),
+]
+SECTION_NAMES = {name for name, _ in SECTIONS}
+BOOK_PAGES = 40  # longer than this is a full book; up to this is a short teaching ("PDF")
+
 
 class Document(Base):
     __tablename__ = "documents"
@@ -18,6 +30,9 @@ class Document(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_page: Mapped[int] = mapped_column(Integer, default=1)
     last_paragraph: Mapped[int] = mapped_column(Integer, default=0)
+    section: Mapped[str] = mapped_column(String(80), default="")  # one of SECTIONS, "" = not sorted yet
+    pages: Mapped[int] = mapped_column(Integer, default=0)  # filled in when the PDF is read for search
+    author: Mapped[str] = mapped_column(String(200), default="")
 
 
 class Note(Base):

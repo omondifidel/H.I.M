@@ -69,6 +69,8 @@ function Area({ value, onChange, onKeyDown, onFocus, setRef, label }) {
 function Editor() {
   const id = useSearchParams().get("id");
   const [title, setTitle] = useState("");
+  const [section, setSection] = useState("");
+  const [sections, setSections] = useState([]);
   const [paras, setParas] = useState([]);
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
@@ -177,6 +179,8 @@ function Editor() {
         parasRef.current = list; setParas(list);
         setDur(data.duration);
         notesRef.current = data.notes || []; setNotes(notesRef.current);
+        setSection(data.section || "");
+        api("/api/sections").then(setSections).catch(() => {});
         loaded.current = true;
         setStatus("ready");
       } catch (e) {
@@ -431,6 +435,11 @@ function Editor() {
       <div className="etop">
         <a className="btn ghost" style={{ height: 40 }} href="/transcribe/" onClick={(e) => { if (save !== "saved") { e.preventDefault(); flush().then(() => { window.location.href = "/transcribe/"; }); } }}>Back</a>
         <input className="tin" value={title} aria-label="Title" onChange={(e) => { setTitle(e.target.value); titleRef.current = e.target.value; markDirty(); }} />
+        <select className="tin section" value={section} aria-label="Library section" title="Where this sermon shows in the HIM Library"
+          onChange={(e) => { const value = e.target.value; setSection(value); api(`/api/transcriptions/${id}`, { method: "PATCH", body: { section: value } }).catch((err) => setError(err.message)); }}>
+          <option value="">Library section…</option>
+          {sections.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+        </select>
         <span className="meta-pill">{wordCount} words · ~{readMins}m read</span>
         <span className={"sv " + (save === "error" ? "error" : "")} role="status">{saveLabel}</span>
         <div className="tools">

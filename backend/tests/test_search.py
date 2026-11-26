@@ -114,3 +114,15 @@ def test_nothing_found_and_reindex(db):
     assert service.search(s, member, "\"faith moves mountains\"", kind="sermon")["results"] == []
     index.remove_source(s, "d-shared")
     assert kinds(service.search(s, member, "mountains")) == []
+
+
+def test_discipleship_stage_filter(db):
+    session, pastor, member, _ = db
+    session.get(Document, "d-shared").section = "Faith"
+    session.commit()
+    res = service.search(session, member, "mountains", section="Faith")
+    assert kinds(res) == [("book", "d-shared"), ("note", "d-shared")]  # the PDF in Faith and my note on it
+    session.get(Transcription, "t-1").section = "Faith"
+    session.commit()
+    assert ("sermon", "t-1") in kinds(service.search(session, member, "mountains", section="Faith"))
+    assert service.search(session, member, "mountains", section="Royalty")["results"] == []

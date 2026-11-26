@@ -13,8 +13,8 @@ from app.core.storage import get_storage
 from app.core.utils import as_utc, utcnow
 from app.modules.auth.groups import group_ids_for
 from app.modules.auth.models import User
-from app.modules.library.models import Document, DocumentProgress, DocumentShare, Note
-from app.modules.library.schemas import DocumentOut, NoteIn, ProgressIn
+from app.modules.library.models import BOOK_PAGES, SECTION_NAMES, Document, DocumentProgress, DocumentShare, Note
+from app.modules.library.schemas import DocumentOut, DocumentPatch, NoteIn, ProgressIn
 from app.modules.search import index as search_index
 from app.modules.usage import service as usage
 
@@ -52,14 +52,17 @@ def get_owned_document(db: Session, user: User, doc_id: str) -> Document:
     return doc
 
 
+def _out(doc: Document, page: int, paragraph: int, shared: bool) -> DocumentOut:
+    return DocumentOut(id=doc.id, title=doc.title, size=doc.size, created_at=doc.created_at, last_page=page,
+                       last_paragraph=paragraph, shared=shared, section=doc.section or "", pages=doc.pages or 0,
+                       author=doc.author or "", kind="book" if (doc.pages or 0) > BOOK_PAGES else "pdf")
+
+
 def to_out(db: Session, user: User, doc: Document) -> DocumentOut:
     if doc.user_id == user.id:
-        page, paragraph, shared = doc.last_page, doc.last_paragraph, False
-    else:
-        row = db.get(DocumentProgress, (user.id, doc.id))
-        page, paragraph, shared = (row.last_page, row.last_paragraph, True) if row else (1, 0, True)
-    return DocumentOut(id=doc.id, title=doc.title, size=doc.size, created_at=doc.created_at,
-                       last_page=page, last_paragraph=paragraph, shared=shared)
+        return _out(doc, doc.last_page, doc.last_paragraph, False)
+    row = db.get(DocumentProgress, (user.id, doc.id))
+    return _out(doc, row.last_page if row else 1, row.last_paragraph if row else 0, True)
 
 
 def list_documents(db: Session, user: User) -> list[DocumentOut]:
@@ -70,17 +73,34 @@ def list_documents(db: Session, user: User) -> list[DocumentOut]:
     out = []
     for doc in docs:
         if doc.user_id == user.id:
-            out.append(DocumentOut(id=doc.id, title=doc.title, size=doc.size, created_at=doc.created_at,
-                                   last_page=doc.last_page, last_paragraph=doc.last_paragraph, shared=False))
+            out.append(_out(doc, doc.last_page, doc.last_paragraph, False))
         else:
             row = progress.get(doc.id)
-            out.append(DocumentOut(id=doc.id, title=doc.title, size=doc.size, created_at=doc.created_at,
-                                   last_page=row.last_page if row else 1, last_paragraph=row.last_paragraph if row else 0, shared=True))
+            out.append(_out(doc, row.last_page if row else 1, row.last_paragraph if row else 0, True))
     return out
 
 
+def check_section(section: str) -> str:
+    section = (section or "").strip()
+    if section and section not in SECTION_NAMES:
+        raise Invalid("Unknown section")
+    return section
+
+
+def patch_document(db: Session, user: User, doc_id: str, p: DocumentPatch) -> DocumentOut:
+    """The owner sorts a PDF into a section or corrects its author."""
+    doc = get_owned_document(db, user, doc_id)
+    if p.section is not None:
+        doc.section = check_section(p.section)
+    if p.author is not None:
+        doc.author = p.author.strip()[:200]
+    db.commit()
+    return to_out(db, user, doc)
+
+
 # ---------- uploading, downloading, deleting ----------
-async def create_document(db: Session, user: User, file: UploadFile) -> Document:
+async def create_document(db: Session, user: User, file: UploadFile, section: str = "") -> Document:
+    section = check_section(section)
     doc_id = str(uuid.uuid4())
     temp = settings.storage_dir / "tmp" / f"{doc_id}.pdf"
     temp.parent.mkdir(parents=True, exist_ok=True)
@@ -102,7 +122,8 @@ async def create_document(db: Session, user: User, file: UploadFile) -> Document
     except Exception:
         temp.unlink(missing_ok=True)
         raise
-    doc = Document(id=doc_id, user_id=user.id, title=(file.filename or "Untitled.pdf")[:300], size=size)
+    doc = Document(id=doc_id, user_id=user.id, title=(file.filename or "Untitled.pdf")[:300], size=size,
+                   section=section)
     db.add(doc)
     db.commit()
     search_index.index_document_later(doc_id)

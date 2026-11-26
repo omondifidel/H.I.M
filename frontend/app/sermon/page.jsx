@@ -17,6 +17,13 @@ function Sermon() {
   const [now, setNow] = useState(t);
   const audioRef = useRef(null);
   const started = useRef(false);
+  const saved = useRef(t);
+  // your place is saved every few seconds, so the library's Sermons page can resume it
+  function savePlace(seconds) {
+    saved.current = seconds;
+    api(`/api/sermons/${id}/position`, { method: "PUT", body: { position: seconds } }).catch(() => {});
+  }
+  useEffect(() => { try { localStorage.setItem("last-sermon", id); } catch {} }, [id]);
 
   useEffect(() => {
     let url = null, gone = false;
@@ -72,7 +79,8 @@ function Sermon() {
         {audioUrl ? (
           <audio ref={audioRef} src={audioUrl} controls preload="metadata" style={{ width: "100%" }}
             onLoadedMetadata={(e) => { if (!started.current) { started.current = true; e.currentTarget.currentTime = t; e.currentTarget.play().catch(() => {}); } }}
-            onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)} />
+            onPause={(e) => savePlace(e.currentTarget.currentTime)}
+            onTimeUpdate={(e) => { const s = e.currentTarget.currentTime; setNow(s); if (Math.abs(s - saved.current) >= 5) savePlace(s); }} />
         ) : <p className="muted sm">{audioNote}</p>}
       </div>
 

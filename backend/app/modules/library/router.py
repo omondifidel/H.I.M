@@ -1,18 +1,25 @@
 import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.storage import get_storage
-from app.modules.auth.deps import require_app
+from app.modules.auth.deps import current_user, require_app
 from app.modules.auth.models import User
 from app.modules.library import service
-from app.modules.library.schemas import DocumentOut, NoteIn, NoteOut, ProgressIn
+from app.modules.library.models import SECTIONS
+from app.modules.library.schemas import DocumentOut, DocumentPatch, NoteIn, NoteOut, ProgressIn
 
 router = APIRouter(prefix="/api", tags=["library"])
 library_user = require_app("library")
+
+
+@router.get("/sections")
+def sections(user: User = Depends(current_user)):
+    """The discipleship sections, in programme order (the library and Transcribe both use them)."""
+    return [{"name": name, "short": short} for name, short in SECTIONS]
 
 
 @router.get("/documents", response_model=list[DocumentOut])
@@ -21,8 +28,9 @@ def list_documents(user: User = Depends(library_user), db: Session = Depends(get
 
 
 @router.post("/documents", response_model=DocumentOut)
-async def upload_document(file: UploadFile = File(...), user: User = Depends(library_user), db: Session = Depends(get_db)):
-    doc = await service.create_document(db, user, file)
+async def upload_document(file: UploadFile = File(...), section: str = Form(""), user: User = Depends(library_user),
+                          db: Session = Depends(get_db)):
+    doc = await service.create_document(db, user, file, section)
     return service.to_out(db, user, doc)
 
 
@@ -39,6 +47,11 @@ def document_opened(doc_id: str, user: User = Depends(library_user), db: Session
 @router.delete("/documents/{doc_id}", status_code=204)
 def delete_document(doc_id: str, user: User = Depends(library_user), db: Session = Depends(get_db)):
     service.delete_document(db, user, doc_id)
+
+
+@router.patch("/documents/{doc_id}", response_model=DocumentOut)
+def patch_document(doc_id: str, p: DocumentPatch, user: User = Depends(library_user), db: Session = Depends(get_db)):
+    return service.patch_document(db, user, doc_id, p)
 
 
 @router.put("/documents/{doc_id}/progress", response_model=DocumentOut)

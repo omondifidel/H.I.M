@@ -5,7 +5,7 @@ import logging
 import re
 import threading
 
-from sqlalchemy import delete, exists, select
+from sqlalchemy import delete, exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -44,6 +44,15 @@ def pdf_pages(data: bytes) -> list[str]:
     return pages
 
 
+def pdf_author(data: bytes) -> str:
+    from pypdf import PdfReader
+
+    try:
+        return str(PdfReader(io.BytesIO(data)).metadata.author or "").strip()[:200]
+    except Exception:  # no metadata, or not a real PDF
+        return ""
+
+
 @_safe
 def index_document(db: Session, doc_id: str) -> None:
     from app.modules.library.service import pdf_key
@@ -51,7 +60,10 @@ def index_document(db: Session, doc_id: str) -> None:
     doc = db.get(Document, doc_id)
     if not doc:
         return
-    pages = pdf_pages(get_storage().read_bytes(pdf_key(doc_id)))
+    data = get_storage().read_bytes(pdf_key(doc_id))
+    pages = pdf_pages(data)
+    doc.pages = len(pages)  # the library sorts short teachings (PDFs) from full books by this
+    doc.author = doc.author or pdf_author(data)
     db.execute(delete(SearchChunk).where(SearchChunk.kind == "book", SearchChunk.source_id == doc_id))
     rows = [SearchChunk(kind="book", source_id=doc.id, user_id=doc.user_id, title=doc.title, page=n, text=t)
             for n, t in enumerate(pages, 1) if t]
@@ -97,7 +109,8 @@ def remove_source(db: Session, source_id: str) -> None:
 def backfill() -> None:
     """Indexes whatever is not indexed yet: everything on the first start, then only new things."""
     with SessionLocal() as db:
-        for doc_id in db.scalars(select(Document.id).where(~exists().where(SearchChunk.kind == "book", SearchChunk.source_id == Document.id))).all():
+        for doc_id in db.scalars(select(Document.id).where(or_(Document.pages == 0, ~exists().where(
+                SearchChunk.kind == "book", SearchChunk.source_id == Document.id)))).all():
             index_document(db, doc_id)
         for job in db.scalars(select(Transcription).where(Transcription.status == "done",
                                                           ~exists().where(SearchChunk.source_id == Transcription.id))).all():

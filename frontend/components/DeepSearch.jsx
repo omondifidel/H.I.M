@@ -1,6 +1,6 @@
 "use client";
 // Deep Word Finder: one search over sermons, books and your notes. Each result opens at the exact page or second.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "../lib/api";
 
@@ -24,16 +24,19 @@ export function resultHref(r) {
 export default function DeepSearch() {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("all");
+  const [stage, setStage] = useState(""); // Discipleship Stage = library section
+  const [stages, setStages] = useState([]);
+  useEffect(() => { api("/api/sections").then(setStages).catch(() => {}); }, []);
   const [res, setRes] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  async function run(text = q, k = kind) {
+  async function run(text = q, k = kind, st = stage) {
     if (!text.trim()) return;
     setBusy(true);
     setErr("");
     try {
-      setRes(await api(`/api/search?q=${encodeURIComponent(text)}&kind=${k}`));
+      setRes(await api(`/api/search?q=${encodeURIComponent(text)}&kind=${k}&section=${encodeURIComponent(st)}`));
     } catch (e) {
       setErr(e.message);
       setRes(null);
@@ -57,6 +60,13 @@ export default function DeepSearch() {
         {KINDS.map(([k, label]) => (
           <button key={k} type="button" className={"chip sm" + (kind === k ? " on" : "")} aria-pressed={kind === k} onClick={() => pickKind(k)}>{label}</button>
         ))}
+        {stages.length > 0 && (
+          <select className={"chip sm" + (stage ? " on" : "")} value={stage} aria-label="Discipleship stage"
+            onChange={(e) => { setStage(e.target.value); if (res) run(q, kind, e.target.value); }}>
+            <option value="">Every stage</option>
+            {stages.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+          </select>
+        )}
       </div>
       {err && <div className="err" role="alert">{err}</div>}
 

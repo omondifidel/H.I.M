@@ -35,6 +35,7 @@ class Transcription(Base):
     segments: Mapped[list] = mapped_column(JSON, default=list)  # [{start, end, text, low}]
     text: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[list] = mapped_column(JSON, default=list)  # [{id, time, body}] sermon notes
+    section: Mapped[str] = mapped_column(String(80), default="")  # library section (library.models.SECTIONS)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     finished_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -50,3 +51,12 @@ class TranscriptionChunk(Base):
     idx: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | done
     segments: Mapped[list] = mapped_column(JSON, default=list)  # raw engine segments
+
+
+class SermonProgress(Base):
+    """Where each listener is up to in a sermon, so the library can resume it and show progress."""
+    __tablename__ = "sermon_progress"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    transcription_id: Mapped[str] = mapped_column(ForeignKey("transcriptions.id"), primary_key=True)
+    position: Mapped[float] = mapped_column(Float, default=0.0)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
