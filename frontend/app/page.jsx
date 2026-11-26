@@ -1255,8 +1255,8 @@ function Library({ onLogout, user }) {
               {(user?.apps?.includes("transcribe") || user?.role === "admin") && (
                 <div className="account-apps">
                   <span className="lbl">CONNECTED APPS</span>
-                  {user?.apps?.includes("transcribe") && <a href="/transcribe/">Transcribe <Icon size={16} d={P.arrow} /></a>}
-                  {user.role === "admin" && <a href="/admin/">Admin dashboard <Icon size={16} d={P.arrow} /></a>}
+                  {(user?.apps?.includes("transcribe") || user?.role === "admin") && <a href="/transcribe/">Transcribe <Icon size={16} d={P.arrow} /></a>}
+                  {user?.role === "admin" && <a href="/admin/">Admin dashboard <Icon size={16} d={P.arrow} /></a>}
                 </div>
               )}
               <button className="btn ghost account-signout" onClick={onLogout}>Sign out</button>
@@ -1304,6 +1304,12 @@ function Library({ onLogout, user }) {
           {toolTabs.map(([k, label, d]) => (
             <button key={k} role="menuitem" className={tab === k ? "on" : ""} onClick={() => go(k)}><Icon size={20} d={d} />{label}</button>
           ))}
+          {(user?.apps?.includes("transcribe") || user?.role === "admin") && (
+            <a role="menuitem" href="/transcribe/"><Icon size={20} d={P.mic} />Transcribe</a>
+          )}
+          {user?.role === "admin" && (
+            <a role="menuitem" href="/admin/"><Icon size={20} d={P.sliders} />Admin dashboard</a>
+          )}
         </div>
       )}
       <nav className="tabbar" aria-label="Main">

@@ -257,18 +257,10 @@ h1,h2{margin:0}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes shake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media (min-width:900px){
-  .authx{grid-template-columns:1.15fr 1fr}
-  .brand{padding:56px 64px;background:var(--surface);border-right:1px solid var(--line);gap:34px}
-  .art{display:none}
-  .ah{font-size:52px;letter-spacing:-1.6px;max-width:520px}
-  .as{font-size:18px;max-width:460px}
-  .feats{display:flex}
-  .bars{display:flex}
-  .only-m{display:none}
-  .only-d{display:block}
-  .seg.only-d{display:flex}
-  .formside{align-items:center;padding:48px}
+@media (min-width:600px){
+  .authx{max-width:480px;margin:0 auto;padding:24px 0 40px;align-content:center}
+  .brand{padding:28px 24px 4px}
+  .formside{padding:20px 24px 28px}
 }
 @media (prefers-reduced-motion:reduce){
   .authx *{animation:none!important;transition:none!important}
@@ -1461,7 +1453,7 @@ body:has(.library-shell){background:var(--bg)}
   .sh-speed{display:none}
   .shelves.with-player{padding-bottom:170px}
   .more-sheet{position:fixed;right:12px;bottom:92px;z-index:20;display:flex;flex-direction:column;min-width:180px;padding:6px;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow)}
-  .more-sheet button{display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border:0;border-radius:11px;background:none;color:var(--text);font-size:14px;font-weight:600;text-align:left}
-  .more-sheet button.on{background:var(--lavender);color:var(--lavender-text)}
+  .more-sheet button,.more-sheet a{display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border:0;border-radius:11px;background:none;color:var(--text);font-size:14px;font-weight:600;text-align:left}
+  .more-sheet button.on,.more-sheet a.on{background:var(--lavender);color:var(--lavender-text)}
 }
 .sh-chips-label{flex:none;align-self:center;margin-right:2px;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase}
